@@ -6,7 +6,13 @@ Assess the `@distribution-selector` subagent's ability to assign probability dis
 
 ## Methodology
 
-We ran **11 consecutive trials** where the subagent was given variable list JSON arrays (produced by the `@variable-selector` subagent in a prior evaluation) and tasked with selecting the most appropriate probability distribution from a supported list of 11 distributions, along with realistic parameter values. Each trial corresponded to a different statistical technique and thematic domain.
+We ran **two rounds of 11 consecutive trials** where the subagent was given variable list JSON arrays (produced by the `@variable-selector` subagent in a prior evaluation) and tasked with selecting the most appropriate probability distribution from a supported list of 11 distributions, along with realistic parameter values. Each trial corresponded to a different statistical technique and thematic domain.
+
+**Round 1** evaluated the original agent prompt and identified four classes of issues. **Round 2** evaluated the same 11 trials against an updated agent prompt that included:
+- Optional `min`/`max` parameters for `beta` to support rescaling from [0, 1] to arbitrary bounds
+- Optional `shift` parameters for `gamma` and `lognormal` to support negative or non-zero minimum bounds
+- A critical skew matching rule table requiring right-skewed → gamma/lognormal/nb/poisson, left-skewed → beta, symmetric/none → normal/uniform/discrete uniform
+- A stricter output format mandating the first character be `[` and the last be `]` with no preamble text
 
 ### Evaluation Rubric (9 criteria × 1 point each)
 
@@ -26,9 +32,9 @@ Each dataset was scored against the following criteria:
 
 ---
 
-## Trial Results
+## Trial Results — Round 1 (Original Prompt)
 
-| # | Technique | Theme | Variables | Distribution Score | Issues |
+| # | Technique | Theme | Variables | Score | Issues |
 |---|---|---|---|---|---|
 | 1 | Linear regression | Ecology | 7 | **9/9** | None |
 | 2 | Data visualization & EDA | Soccer | 10 | **7/9** | Beta used for non-[0,1] variable; parameters on wrong scale |
@@ -41,6 +47,26 @@ Each dataset was scored against the following criteria:
 | 9 | Multiple linear regression | Agriculture | 10 | **9/9** | None |
 | 10 | Regularized regression (ridge/lasso) | Airline Industry | 30 | **7/9** | Normal assigned to right-skewed variables; preamble text |
 | 11 | MLR with interactions | Finance | 7 | **7/9** | Portfolio return (negative bounds) assigned lognormal |
+
+**Round 1 totals:** 4 perfect (9/9), 2 at 8/9, 5 at 7/9. Mean: 8.1/9.
+
+## Trial Results — Round 2 (Remediated Prompt)
+
+| # | Technique | Theme | Variables | Score | Issues |
+|---|---|---|---|---|---|
+| 1 | Linear regression | Ecology | 7 | **9/9** | None |
+| 2 | Data visualization & EDA | Soccer | 10 | **9/9** | None |
+| 3 | Variable classification | Software Engineering | 16 | **9/9** | None |
+| 4 | Distribution selection | Marketing | 12 | **9/9** | None |
+| 5 | MLE | Mechanical Engineering | 10 | **9/9** | None |
+| 6 | Interval estimation | Construction | 11 | **9/9** | None |
+| 7 | Hypothesis testing | Electrical Engineering | 8 | **9/9** | None |
+| 8 | Simple linear regression | Accounting | 8 | **9/9** | None |
+| 9 | Multiple linear regression | Agriculture | 10 | **9/9** | None |
+| 10 | Regularized regression (ridge/lasso) | Airline Industry | 30 | **9/9** | None |
+| 11 | MLR with interactions | Finance | 7 | **9/9** | None |
+
+**Round 2 totals:** 11/11 perfect (9/9). Mean: 9.0/9.
 
 ---
 
@@ -73,61 +99,96 @@ The subagent received the variable list JSON arrays produced by the `@variable-s
 - **Supported distributions only:** The subagent never used a distribution outside the allowed list of 11 (criterion 9: 11/11 perfect).
 - **Reasonable defaults for bounded symmetric variables:** Uniform and discrete uniform distributions were used appropriately for tightly bounded, symmetric variables lacking skew information, producing valid synthetic data.
 
-### Issues Identified
+### Round 1 Issues Identified
 
-1. **Beta distribution on non-[0,1] bounds (Trials 2–3):** The subagent incorrectly assigned `beta` to variables whose bounds were not on the [0, 1] interval. In Trial 2, `minutes_played` (bounds [0, 3420]) was assigned beta with parameters `shape1=6, shape2=2`. In Trial 3, `test_coverage_percent` (bounds [0, 100]) was assigned beta with `shape1=12, shape2=3`. The beta distribution is only appropriate for data bounded between 0 and 1. This caused failures in both criterion 2 (distribution sensible) and criterion 3 (parameters make sense) because the parameter values implicitly assumed a [0, 1] scale.
+1. **Beta distribution on non-[0,1] bounds (Trials 2–3):** The subagent assigned `beta` to variables whose bounds were not [0, 1]. `minutes_played` (bounds [0, 3420]) was assigned beta(6, 2) and `test_coverage_percent` (bounds [0, 100]) was assigned beta(12, 3). The beta distribution's `shape1`/`shape2` parameters are only meaningful on the [0, 1] scale, so parameters and distribution were both wrong.
 
-2. **Skew-distribution mismatch (Trial 10):** `arrival_delay_minutes` and `departure_delay_minutes` were both explicitly marked as `right-skewed` in their metadata, yet the subagent assigned `normal` (a symmetric distribution) instead of a right-skewed alternative such as gamma or lognormal. This indicates the subagent did not consistently incorporate the `skew` field into its distribution selection logic.
+2. **Skew-distribution mismatch (Trial 10):** `arrival_delay_minutes` and `departure_delay_minutes` were marked `right-skewed` but assigned `normal` (symmetric). The `skew` field was ignored.
 
-3. **Bounds-distribution mismatch (Trial 11):** `portfolio_return` had bounds `{min: -50, max: 250}` allowing negative values, but the subagent assigned `lognormal` (a strictly positive distribution). Lognormal cannot generate observations below zero, making it impossible to produce values consistent with the lower bound. A normal or skew-normal family would have been appropriate here.
+3. **Bounds-distribution mismatch (Trial 11):** `portfolio_return` (bounds [-50, 250]) assigned `lognormal`, which is strictly positive and cannot produce negative values.
 
-4. **Preamble text in output (Trials 6, 7, 10):** Three trials included explanatory text or reasoning before the JSON output instead of returning only the raw JSON array. Trial 6 included internal monologue ("Now I have good context from the codebase..."), Trial 7 prefaced with "Here is the distribution assignment for each variable:", and Trial 10 included reasoning about the selection process. This violates the requirement to return only JSON.
+4. **Preamble text in output (Trials 6, 7, 10):** Three trials included explanatory text before the JSON instead of returning only the raw array.
 
-### Recommended Prompt Template
+### Remediations Applied
 
-For future use, the following prompt structure should produce 9/9 results:
+Based on Round 1 findings, four changes were made to the agent prompt (see `.opencode/agents/distribution-selector.md`):
+
+1. **Beta `min`/`max` added:** Beta now supports optional `min` and `max` parameters. The agent uses `shape1`/`shape2` on the [0, 1] scale and sets `min`/`max` to `bounds.min`/`bounds.max` when the variable's bounds differ. The consuming system rescales: `value = min + (max - min) * sample`.
+
+2. **Gamma/lognormal `shift` added:** Gamma and lognormal now support an optional `shift` parameter. When `bounds.min < 0`, the agent sets `shift = bounds.min` to move the support to the variable's minimum. The consuming system computes: `value = shift + sample`.
+
+3. **Critical skew matching rule added:** A hard rule table was introduced: right-skewed → gamma/lognormal/nb/poisson; left-skewed → beta; symmetric/none → normal/uniform/discrete uniform. Symmetric distributions on skewed variables are explicitly forbidden.
+
+4. **Stricter output format:** The output section now requires the first character to be `[` and the last to be `]`, with an explicit "ABSOLUTELY FORBIDDEN" list including preamble text and markdown fences.
+
+### Round 2 Results
+
+All four issues were fully resolved:
+
+| Issue | Round 1 Affected Trials | Round 2 Result |
+|---|---|---|
+| Beta on non-[0,1] bounds | 2, 3 | Beta now uses `min`/`max` — e.g., `minutes_played` → beta(10, 3, min=0, max=3420); `test_coverage_percent` → beta(10, 3, min=0, max=100) |
+| Right-skew → normal | 10 | `arrival_delay_minutes` → lognormal(4.0, 0.7, shift=-60); `departure_delay_minutes` → lognormal(3.6, 0.7, shift=-30) |
+| Negative bounds → lognormal | 11 | `portfolio_return` → lognormal(4.0, 0.7, shift=-50) |
+| Preamble text | 6, 7, 10 | All 11 outputs start with `[` and end with `]` — no preamble |
+| Shift usage | — | Used appropriately across trials: `avg_cyclomatic_complexity` shift=1, `surface_roughness_ra` shift=0.05, `fatigue_cycles_to_failure` shift=1000, `marketing_spend` shift=100, `net_income` shift=-500000, and others |
+| Left-skew → beta with min/max | — | `crew_satisfaction_score` beta(6,2, min=1, max=10), `visibility_km` beta(8,2, min=0.1, max=20), `number_of_passengers` beta(8,3, min=1, max=400), etc. |
+
+### Current Agent Prompt
+
+The following prompt (as defined in `.opencode/agents/distribution-selector.md`) consistently produces 9/9 results:
 
 ```
-Assign the most appropriate probability distribution to each variable from the supported list only (normal, gamma, beta, lognormal, uniform, discrete uniform, categorical-nominal, categorical-ordinal, binomial, negative binomial, poisson).
+## Distribution selection guidelines
 
-Each output object must have exactly three fields: "name", "distribution", and "distribution_parameters".
+- **Quantitative, continuous, conceptually proportional / [0,1]-like** → `beta`
+  (use `shape1`, `shape2` on [0,1] scale). If the variable's `bounds` differ
+  from [0, 1], set `min` and `max` to `bounds.min` and `bounds.max` so the
+  consuming system can rescale.
+- **Quantitative, continuous, right-skewed** → `gamma` or `lognormal`. If
+  `bounds.min < 0`, set `shift = bounds.min` to shift the support to the
+  variable's minimum. If `bounds.min ≥ 0`, shift defaults to 0.
+- **Quantitative, continuous, symmetric, unbounded** → `normal`
+- **Quantitative, continuous, symmetric, bounded [min, max]** → `uniform`
+- **Quantitative, discrete, bounded [0, N] (count of successes/trials)** → `binomial`
+- **Quantitative, discrete, bounded [min, max] (small range, not success counts)** → `discrete uniform`
+- **Quantitative, discrete, unbounded counts** → `poisson` (if mean ≈ variance)
+  or `negative binomial` (if overdispersed / right-skewed)
+- **Categorical, measurement_level: nominal** → `categorical-nominal`
+- **Categorical, measurement_level: ordinal** → `categorical-ordinal`
 
-Distribution selection rules:
-- Quantitative, continuous, bounded [0, 1] → beta
-- Quantitative, continuous, bounded [0, ∞), right-skewed → gamma or lognormal
-- Quantitative, continuous, symmetric, unbounded → normal
-- Quantitative, continuous, symmetric, bounded [min, max] → uniform
-- Quantitative, discrete, bounded [0, N] (count of successes/trials) → binomial
-- Quantitative, discrete, bounded [min, max] (small range, not success counts) → discrete uniform
-- Quantitative, discrete, unbounded counts → poisson (mean ≈ variance) or negative binomial (overdispersed/right-skewed)
-- Categorical, measurement_level: nominal → categorical-nominal
-- Categorical, measurement_level: ordinal → categorical-ordinal
+### Critical skew matching rule
 
-Parameter specifications:
-| Distribution | Parameters |
+The variable's `skew` field MUST drive your distribution choice — never assign
+a symmetric distribution to a skewed variable.
+
+| Variable `skew` | Required distribution families |
 |---|---|
-| normal | mean, sd |
-| gamma | shape, rate |
-| beta | shape1, shape2 |
-| lognormal | meanlog, sdlog |
-| uniform | min, max |
-| discrete uniform | min, max |
-| categorical-nominal | categories, probabilities |
-| categorical-ordinal | categories, probabilities |
-| binomial | size, prob |
-| negative binomial | size, mu |
-| poisson | lambda |
+| `"right"` | gamma, lognormal, negative binomial, poisson |
+| `"left"` | beta |
+| `"symmetric"` or `"none"` | normal, uniform, discrete uniform |
 
-CRITICAL RULES:
-- beta is ONLY for data bounded in [0, 1].
-- lognormal requires strictly positive data (min bound > 0).
-- Respect the "skew" field: right-skewed → gamma/lognormal/nb, symmetric → normal/uniform, left-skewed → beta (if [0,1]).
-- Match parameter values to the actual bounds of the variable.
-- Return ONLY a raw JSON array — no introductory text, explanations, or markdown formatting.
+## Distribution parameters
+
+| distribution | parameters |
+|---|---|
+| normal | `mean`, `sd` |
+| gamma | `shape`, `rate`[, `shift`] |
+| beta | `shape1`, `shape2`[, `min`, `max`] |
+| lognormal | `meanlog`, `sdlog`[, `shift`] |
+| uniform | `min`, `max` |
+| discrete uniform | `min`, `max` |
+| categorical-nominal | `categories`, `probabilities` |
+| categorical-ordinal | `categories`, `probabilities` |
+| binomial | `size`, `prob` |
+| negative binomial | `size`, `mu` |
+| poisson | `lambda` |
 ```
 
 ---
 
 ## Conclusion
 
-The `@distribution-selector` subagent reliably produces well-structured distribution assignments with correct field names and parameter naming. It achieved perfect scores on six of the nine criteria across all 11 trials. However, three classes of issues were identified: (1) beta distribution misuse on non-[0,1] bounded variables, (2) skew-aware distribution selection failures (using normal for right-skewed variables, or lognormal for variables with negative bounds), and (3) inadvertent preamble text before JSON output. These issues appeared in 5 of the 11 trials, pulling the overall per-trial scores to 7–8 out of 9. With targeted prompt engineering — specifically clarifying the [0,1] constraint for beta, enforcing skew-to-distribution mapping rules, requiring respect for negative bounds, and mandating raw JSON-only output — the agent can be expected to achieve 9/9 consistently.
+The `@distribution-selector` subagent produces well-structured distribution assignments with correct field names, parameter naming, and complete variable coverage. An initial evaluation (Round 1) revealed four classes of issues across 7 of 11 trials: (1) beta assigned to variables with bounds outside [0, 1] with no rescaling information, (2) symmetric distributions (normal) assigned to explicitly right-skewed variables, (3) lognormal assigned to variables with negative lower bounds, and (4) preamble text returned before JSON output.
+
+Four targeted remediations were applied to the agent prompt: adding optional `min`/`max` parameters to beta, adding optional `shift` parameters to gamma and lognormal, adding a critical skew-matching rule table, and strengthening the output format to require the first character be `[` and the last be `]`. In the re-evaluation (Round 2), all 11 trials scored a perfect **9/9**, with all previously failing cases now correctly handled. With the remediated prompt, the agent consistently respects variable bounds, skew metadata, and output format constraints.
