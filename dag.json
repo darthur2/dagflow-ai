@@ -1,0 +1,204 @@
+{
+  "nodes": [
+    {
+      "id": "sale_price",
+      "type": "endogenous"
+    },
+    {
+      "id": "square_feet",
+      "type": "endogenous"
+    },
+    {
+      "id": "lot_size",
+      "type": "endogenous"
+    },
+    {
+      "id": "bedrooms",
+      "type": "endogenous"
+    },
+    {
+      "id": "bathrooms",
+      "type": "endogenous"
+    },
+    {
+      "id": "property_age",
+      "type": "endogenous"
+    },
+    {
+      "id": "num_floors",
+      "type": "endogenous"
+    },
+    {
+      "id": "total_rooms",
+      "type": "endogenous"
+    },
+    {
+      "id": "garage_capacity",
+      "type": "endogenous"
+    },
+    {
+      "id": "has_basement",
+      "type": "endogenous"
+    },
+    {
+      "id": "basement_finish_type",
+      "type": "endogenous"
+    },
+    {
+      "id": "exterior_condition",
+      "type": "endogenous"
+    },
+    {
+      "id": "neighborhood_quality",
+      "type": "endogenous"
+    },
+    {
+      "id": "has_fireplace",
+      "type": "endogenous"
+    },
+    {
+      "id": "central_air",
+      "type": "endogenous"
+    },
+    {
+      "id": "construction_era",
+      "type": "exogenous",
+      "description": "The general historical period when the house was originally built. Influences property_age, whether a basement was built (common in pre-1970s), exterior finish quality and materials, and likelihood of central AC installation."
+    },
+    {
+      "id": "zoning_land_use_regulation",
+      "type": "exogenous",
+      "description": "Unobserved municipal zoning codes and land-use policies that jointly constrain lot sizes (minimum lot requirements, density limits) and shape neighborhood quality (zoning determines neighborhood character)."
+    }
+  ],
+  "edges": [
+    {
+      "from": "construction_era",
+      "to": "property_age"
+    },
+    {
+      "from": "construction_era",
+      "to": "has_basement"
+    },
+    {
+      "from": "construction_era",
+      "to": "exterior_condition"
+    },
+    {
+      "from": "construction_era",
+      "to": "central_air"
+    },
+    {
+      "from": "zoning_land_use_regulation",
+      "to": "lot_size"
+    },
+    {
+      "from": "zoning_land_use_regulation",
+      "to": "neighborhood_quality"
+    },
+    {
+      "from": "neighborhood_quality",
+      "to": "lot_size"
+    },
+    {
+      "from": "neighborhood_quality",
+      "to": "sale_price"
+    },
+    {
+      "from": "lot_size",
+      "to": "square_feet"
+    },
+    {
+      "from": "lot_size",
+      "to": "num_floors"
+    },
+    {
+      "from": "lot_size",
+      "to": "sale_price"
+    },
+    {
+      "from": "num_floors",
+      "to": "square_feet"
+    },
+    {
+      "from": "num_floors",
+      "to": "sale_price"
+    },
+    {
+      "from": "square_feet",
+      "to": "bedrooms"
+    },
+    {
+      "from": "square_feet",
+      "to": "bathrooms"
+    },
+    {
+      "from": "square_feet",
+      "to": "total_rooms"
+    },
+    {
+      "from": "square_feet",
+      "to": "garage_capacity"
+    },
+    {
+      "from": "square_feet",
+      "to": "has_fireplace"
+    },
+    {
+      "from": "square_feet",
+      "to": "sale_price"
+    },
+    {
+      "from": "bedrooms",
+      "to": "sale_price"
+    },
+    {
+      "from": "bathrooms",
+      "to": "sale_price"
+    },
+    {
+      "from": "total_rooms",
+      "to": "sale_price"
+    },
+    {
+      "from": "garage_capacity",
+      "to": "sale_price"
+    },
+    {
+      "from": "property_age",
+      "to": "exterior_condition"
+    },
+    {
+      "from": "property_age",
+      "to": "central_air"
+    },
+    {
+      "from": "property_age",
+      "to": "sale_price"
+    },
+    {
+      "from": "has_basement",
+      "to": "basement_finish_type"
+    },
+    {
+      "from": "has_basement",
+      "to": "sale_price"
+    },
+    {
+      "from": "basement_finish_type",
+      "to": "sale_price"
+    },
+    {
+      "from": "exterior_condition",
+      "to": "sale_price"
+    },
+    {
+      "from": "has_fireplace",
+      "to": "sale_price"
+    },
+    {
+      "from": "central_air",
+      "to": "sale_price"
+    }
+  ]
+}

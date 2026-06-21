@@ -1,132 +1,200 @@
 [
   {
-    "name": "campaign_channel",
-    "distribution": "categorical-nominal",
-    "distribution_parameters": {
-      "categories": ["Email", "Social_Media", "Search_Engine", "Display", "TV", "Direct_Mail"],
-      "probabilities": [0.2, 0.2, 0.2, 0.15, 0.1, 0.15]
-    }
-  },
-  {
-    "name": "product_category",
-    "distribution": "categorical-nominal",
-    "distribution_parameters": {
-      "categories": ["Electronics", "Clothing", "Home_Garden", "Sports", "Books", "Beauty"],
-      "probabilities": [0.2, 0.2, 0.2, 0.15, 0.1, 0.15]
-    }
-  },
-  {
-    "name": "region",
-    "distribution": "categorical-nominal",
-    "distribution_parameters": {
-      "categories": ["North", "South", "East", "West", "Central"],
-      "probabilities": [0.2, 0.2, 0.2, 0.2, 0.2]
-    }
-  },
-  {
-    "name": "customer_segment",
-    "distribution": "categorical-nominal",
-    "distribution_parameters": {
-      "categories": ["New", "Active", "At_Risk", "Churned", "VIP"],
-      "probabilities": [0.25, 0.35, 0.15, 0.1, 0.15]
-    }
-  },
-  {
-    "name": "device_type",
-    "distribution": "categorical-nominal",
-    "distribution_parameters": {
-      "categories": ["Mobile", "Desktop", "Tablet"],
-      "probabilities": [0.55, 0.3, 0.15]
-    }
-  },
-  {
-    "name": "day_of_week",
-    "distribution": "categorical-ordinal",
-    "distribution_parameters": {
-      "categories": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-      "probabilities": [0.15, 0.15, 0.15, 0.15, 0.15, 0.125, 0.125]
-    }
-  },
-  {
-    "name": "month",
-    "distribution": "categorical-ordinal",
-    "distribution_parameters": {
-      "categories": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
-      "probabilities": [0.085, 0.085, 0.085, 0.085, 0.085, 0.085, 0.085, 0.085, 0.085, 0.085, 0.085, 0.085]
-    }
-  },
-  {
-    "name": "quarter",
-    "distribution": "categorical-ordinal",
-    "distribution_parameters": {
-      "categories": ["Q1", "Q2", "Q3", "Q4"],
-      "probabilities": [0.25, 0.25, 0.25, 0.25]
-    }
-  },
-  {
-    "name": "year",
-    "distribution": "categorical-ordinal",
-    "distribution_parameters": {
-      "categories": ["2023", "2024", "2025"],
-      "probabilities": [0.3333, 0.3333, 0.3334]
-    }
-  },
-  {
-    "name": "conversion_flag",
-    "distribution": "categorical-nominal",
-    "distribution_parameters": {
-      "categories": ["Yes", "No"],
-      "probabilities": [0.12, 0.88]
-    }
-  },
-  {
-    "name": "ad_spend",
+    "name": "sale_price",
     "distribution": "lognormal",
-    "distribution_parameters": { "meanlog": 8.8, "sdlog": 1.2, "min": 0, "max": 100000 }
+    "distribution_parameters": {
+      "meanlog": 12.8,
+      "sdlog": 0.8,
+      "min": 50000,
+      "max": 2000000
+    }
   },
   {
-    "name": "revenue",
+    "name": "square_feet",
     "distribution": "lognormal",
-    "distribution_parameters": { "meanlog": 10.3, "sdlog": 1.5, "min": 0, "max": 500000 }
+    "distribution_parameters": {
+      "meanlog": 7.5,
+      "sdlog": 0.5,
+      "min": 500,
+      "max": 10000
+    }
   },
   {
-    "name": "customer_lifetime_value",
+    "name": "lot_size",
     "distribution": "lognormal",
-    "distribution_parameters": { "meanlog": 8.0, "sdlog": 1.2, "min": 0, "max": 50000 }
+    "distribution_parameters": {
+      "meanlog": 9,
+      "sdlog": 0.8,
+      "min": 1000,
+      "max": 100000
+    }
   },
   {
-    "name": "click_through_rate",
-    "distribution": "beta",
-    "distribution_parameters": { "shape1": 2, "shape2": 50, "min": 0, "max": 1 }
-  },
-  {
-    "name": "engagement_score",
-    "distribution": "normal",
-    "distribution_parameters": { "mean": 50, "sd": 15, "min": 0, "max": 100 }
-  },
-  {
-    "name": "avg_order_value",
-    "distribution": "lognormal",
-    "distribution_parameters": { "meanlog": 4.25, "sdlog": 0.6, "min": 5, "max": 500 }
-  },
-  {
-    "name": "impressions",
+    "name": "bedrooms",
     "distribution": "negative binomial",
-    "distribution_parameters": { "size": 2, "mu": 500000, "min": 0, "max": 10000000 }
+    "distribution_parameters": {
+      "size": 5,
+      "mu": 3.2,
+      "min": 0,
+      "max": 10
+    }
   },
   {
-    "name": "clicks",
+    "name": "bathrooms",
+    "distribution": "gamma",
+    "distribution_parameters": {
+      "shape": 6,
+      "rate": 2,
+      "min": 1,
+      "max": 8
+    }
+  },
+  {
+    "name": "property_age",
+    "distribution": "gamma",
+    "distribution_parameters": {
+      "shape": 2.5,
+      "rate": 0.1,
+      "min": 0,
+      "max": 110
+    }
+  },
+  {
+    "name": "num_floors",
     "distribution": "negative binomial",
-    "distribution_parameters": { "size": 3, "mu": 50000, "min": 0, "max": 500000 }
+    "distribution_parameters": {
+      "size": 2,
+      "mu": 1.4,
+      "min": 1,
+      "max": 4
+    }
   },
   {
-    "name": "conversions",
+    "name": "total_rooms",
     "distribution": "negative binomial",
-    "distribution_parameters": { "size": 2, "mu": 5000, "min": 0, "max": 50000 }
+    "distribution_parameters": {
+      "size": 5,
+      "mu": 4.5,
+      "min": 2,
+      "max": 14
+    }
   },
   {
-    "name": "week_number",
-    "distribution": "discrete uniform",
-    "distribution_parameters": { "min": 1, "max": 104 }
+    "name": "garage_capacity",
+    "distribution": "categorical-ordinal",
+    "distribution_parameters": {
+      "categories": [
+        "None",
+        "Single",
+        "Double",
+        "Triple",
+        "Quad"
+      ],
+      "probabilities": [
+        0.15,
+        0.3,
+        0.4,
+        0.12,
+        0.03
+      ]
+    }
+  },
+  {
+    "name": "has_basement",
+    "distribution": "categorical-nominal",
+    "distribution_parameters": {
+      "categories": [
+        "No",
+        "Yes"
+      ],
+      "probabilities": [
+        0.3,
+        0.7
+      ]
+    }
+  },
+  {
+    "name": "basement_finish_type",
+    "distribution": "categorical-ordinal",
+    "distribution_parameters": {
+      "categories": [
+        "None",
+        "Partial",
+        "Full"
+      ],
+      "probabilities": [
+        0.3,
+        0.4,
+        0.3
+      ]
+    }
+  },
+  {
+    "name": "exterior_condition",
+    "distribution": "categorical-ordinal",
+    "distribution_parameters": {
+      "categories": [
+        "Poor",
+        "Fair",
+        "Average",
+        "Good",
+        "Excellent"
+      ],
+      "probabilities": [
+        0.05,
+        0.1,
+        0.35,
+        0.35,
+        0.15
+      ]
+    }
+  },
+  {
+    "name": "neighborhood_quality",
+    "distribution": "categorical-ordinal",
+    "distribution_parameters": {
+      "categories": [
+        "Very_Low",
+        "Low",
+        "Medium",
+        "High",
+        "Very_High"
+      ],
+      "probabilities": [
+        0.08,
+        0.15,
+        0.35,
+        0.3,
+        0.12
+      ]
+    }
+  },
+  {
+    "name": "has_fireplace",
+    "distribution": "categorical-nominal",
+    "distribution_parameters": {
+      "categories": [
+        "No",
+        "Yes"
+      ],
+      "probabilities": [
+        0.35,
+        0.65
+      ]
+    }
+  },
+  {
+    "name": "central_air",
+    "distribution": "categorical-nominal",
+    "distribution_parameters": {
+      "categories": [
+        "No",
+        "Yes"
+      ],
+      "probabilities": [
+        0.2,
+        0.8
+      ]
+    }
   }
 ]
