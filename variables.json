@@ -1,0 +1,222 @@
+[
+  {
+    "name": "campaign_channel",
+    "short_description": "The marketing channel through which the campaign was delivered to customers",
+    "reason_for_inclusion": "Essential for comparing channel performance in bar charts and stacked bar charts",
+    "data_type": "categorical",
+    "measurement_level": "nominal",
+    "effect_type": "fixed",
+    "number_of_categories": 6,
+    "category_names": ["Email", "Social_Media", "Search_Engine", "Display", "TV", "Direct_Mail"]
+  },
+  {
+    "name": "product_category",
+    "short_description": "The product category being marketed in the campaign",
+    "reason_for_inclusion": "Enables product-level analysis in bar charts and heatmaps when crossed with region or channel",
+    "data_type": "categorical",
+    "measurement_level": "nominal",
+    "effect_type": "fixed",
+    "number_of_categories": 6,
+    "category_names": ["Electronics", "Clothing", "Home_Garden", "Sports", "Books", "Beauty"]
+  },
+  {
+    "name": "region",
+    "short_description": "Geographic region where the campaign was targeted",
+    "reason_for_inclusion": "Useful for geographic comparisons in bar charts and heatmaps showing regional performance differences",
+    "data_type": "categorical",
+    "measurement_level": "nominal",
+    "effect_type": "fixed",
+    "number_of_categories": 5,
+    "category_names": ["North", "South", "East", "West", "Central"]
+  },
+  {
+    "name": "customer_segment",
+    "short_description": "Customer lifecycle segment classification based on recency, frequency, and monetary value",
+    "reason_for_inclusion": "Critical for segment analysis in grouped bar charts and box plots of revenue or engagement by segment",
+    "data_type": "categorical",
+    "measurement_level": "nominal",
+    "effect_type": "fixed",
+    "number_of_categories": 5,
+    "category_names": ["New", "Active", "At_Risk", "Churned", "VIP"]
+  },
+  {
+    "name": "device_type",
+    "short_description": "The type of device used when the customer interacted with the campaign",
+    "reason_for_inclusion": "Enables device-based comparisons in bar charts and stacked bar charts across channels",
+    "data_type": "categorical",
+    "measurement_level": "nominal",
+    "effect_type": "fixed",
+    "number_of_categories": 3,
+    "category_names": ["Mobile", "Desktop", "Tablet"]
+  },
+  {
+    "name": "day_of_week",
+    "short_description": "Day of the week when the campaign interaction occurred",
+    "reason_for_inclusion": "Reveals weekly patterns in line charts and bar charts for identifying high-engagement days",
+    "data_type": "categorical",
+    "measurement_level": "ordinal",
+    "effect_type": "fixed",
+    "number_of_categories": 7,
+    "category_names": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+  },
+  {
+    "name": "month",
+    "short_description": "Calendar month of the campaign interaction",
+    "reason_for_inclusion": "Captures seasonal trends in line charts and heatmaps showing monthly performance patterns",
+    "data_type": "categorical",
+    "measurement_level": "ordinal",
+    "effect_type": "fixed",
+    "number_of_categories": 12,
+    "category_names": "January, February, March, April, May, June, July, August, September, October, November, December"
+  },
+  {
+    "name": "quarter",
+    "short_description": "Fiscal quarter of the campaign interaction",
+    "reason_for_inclusion": "Useful for high-level time trends in line charts and grouped bar charts comparing quarterly performance",
+    "data_type": "categorical",
+    "measurement_level": "ordinal",
+    "effect_type": "fixed",
+    "number_of_categories": 4,
+    "category_names": ["Q1", "Q2", "Q3", "Q4"]
+  },
+  {
+    "name": "conversion_flag",
+    "short_description": "Indicates whether the campaign interaction resulted in a conversion or purchase",
+    "reason_for_inclusion": "Provides binary outcome for conversion rate visualizations and pie charts showing conversion proportion",
+    "data_type": "categorical",
+    "measurement_level": "nominal",
+    "effect_type": "fixed",
+    "number_of_categories": 2,
+    "category_names": ["Yes", "No"]
+  },
+  {
+    "name": "year",
+    "short_description": "Calendar year of the campaign interaction",
+    "reason_for_inclusion": "Enables year-over-year trend analysis in line charts and multi-year comparisons in bar charts",
+    "data_type": "categorical",
+    "measurement_level": "ordinal",
+    "effect_type": "fixed",
+    "number_of_categories": 3,
+    "category_names": ["2023", "2024", "2025"]
+  },
+  {
+    "name": "ad_spend",
+    "short_description": "Total monetary amount spent on the campaign",
+    "reason_for_inclusion": "Key input variable for scatter plots against revenue or conversions to analyze ROI and marketing efficiency",
+    "data_type": "quantitative",
+    "measurement_level": "ratio",
+    "effect_type": "fixed",
+    "quantitative_type": "continuous",
+    "bounds": { "min": 0, "max": 100000 },
+    "skew": "right",
+    "modality": "unimodal"
+  },
+  {
+    "name": "revenue",
+    "short_description": "Total revenue generated from the campaign",
+    "reason_for_inclusion": "Primary outcome metric for scatter plots against ad_spend, box plots by segment, and line charts over time",
+    "data_type": "quantitative",
+    "measurement_level": "ratio",
+    "effect_type": "fixed",
+    "quantitative_type": "continuous",
+    "bounds": { "min": 0, "max": 500000 },
+    "skew": "right",
+    "modality": "unimodal"
+  },
+  {
+    "name": "customer_lifetime_value",
+    "short_description": "Predicted total value a customer will generate over their entire relationship with the company",
+    "reason_for_inclusion": "Important for customer value analysis in histograms and box plots across segments, and scatter plots vs engagement",
+    "data_type": "quantitative",
+    "measurement_level": "ratio",
+    "effect_type": "fixed",
+    "quantitative_type": "continuous",
+    "bounds": { "min": 0, "max": 50000 },
+    "skew": "right",
+    "modality": "unimodal"
+  },
+  {
+    "name": "click_through_rate",
+    "short_description": "Proportion of impressions that resulted in a click, expressed as a decimal between 0 and 1",
+    "reason_for_inclusion": "Standard engagement metric for histograms showing rate distributions and scatter plots against conversion rate",
+    "data_type": "quantitative",
+    "measurement_level": "ratio",
+    "effect_type": "fixed",
+    "quantitative_type": "continuous",
+    "bounds": { "min": 0, "max": 1 },
+    "skew": "right",
+    "modality": "unimodal"
+  },
+  {
+    "name": "engagement_score",
+    "short_description": "Composite score measuring depth of customer engagement with the campaign (0 to 100)",
+    "reason_for_inclusion": "Versatile metric for histograms, scatter plots against revenue, and color-mapped heatmaps",
+    "data_type": "quantitative",
+    "measurement_level": "interval",
+    "effect_type": "fixed",
+    "quantitative_type": "continuous",
+    "bounds": { "min": 0, "max": 100 },
+    "skew": "symmetric",
+    "modality": "unimodal"
+  },
+  {
+    "name": "avg_order_value",
+    "short_description": "Average monetary value of orders placed through the campaign",
+    "reason_for_inclusion": "Useful for scatter plots against ad_spend and box plots by product category to compare spending behavior",
+    "data_type": "quantitative",
+    "measurement_level": "ratio",
+    "effect_type": "fixed",
+    "quantitative_type": "continuous",
+    "bounds": { "min": 5, "max": 500 },
+    "skew": "right",
+    "modality": "unimodal"
+  },
+  {
+    "name": "impressions",
+    "short_description": "Number of times the campaign content was displayed to users",
+    "reason_for_inclusion": "Top-of-funnel metric for scatter plots against clicks, line charts over time, and funnel visualizations",
+    "data_type": "quantitative",
+    "measurement_level": "ratio",
+    "effect_type": "fixed",
+    "quantitative_type": "discrete",
+    "bounds": { "min": 0, "max": 10000000 },
+    "skew": "right",
+    "modality": "unimodal"
+  },
+  {
+    "name": "clicks",
+    "short_description": "Number of clicks received by the campaign",
+    "reason_for_inclusion": "Mid-funnel engagement metric for scatter plots against impressions and conversions, and funnel analysis",
+    "data_type": "quantitative",
+    "measurement_level": "ratio",
+    "effect_type": "fixed",
+    "quantitative_type": "discrete",
+    "bounds": { "min": 0, "max": 500000 },
+    "skew": "right",
+    "modality": "unimodal"
+  },
+  {
+    "name": "conversions",
+    "short_description": "Number of completed desired actions (purchases, sign-ups) attributed to the campaign",
+    "reason_for_inclusion": "Bottom-of-funnel outcome metric for scatter plots against clicks, bar charts by channel, and line trends",
+    "data_type": "quantitative",
+    "measurement_level": "ratio",
+    "effect_type": "fixed",
+    "quantitative_type": "discrete",
+    "bounds": { "min": 0, "max": 50000 },
+    "skew": "right",
+    "modality": "unimodal"
+  },
+  {
+    "name": "week_number",
+    "short_description": "Week number since the start of the observation period (1 to 104 representing two years)",
+    "reason_for_inclusion": "Continuous time variable enabling line charts and area charts showing trends in key metrics over two years",
+    "data_type": "quantitative",
+    "measurement_level": "ratio",
+    "effect_type": "fixed",
+    "quantitative_type": "discrete",
+    "bounds": { "min": 1, "max": 104 },
+    "skew": "symmetric",
+    "modality": "unimodal"
+  }
+]

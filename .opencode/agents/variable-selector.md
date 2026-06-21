@@ -4,7 +4,7 @@ mode: subagent
 permission:
   read: allow
   grep: allow
-  edit: deny
+  edit: allow
   bash: deny
   glob: deny
   webfetch: deny
@@ -60,3 +60,7 @@ Notes:
 ```
 
 If `number_of_categories` is 10 or fewer, `category_names` must be an explicit array of category name strings (e.g., `["Brand_A", "Brand_B"]`). If greater than 10, `category_names` may be a string pattern describing the naming convention (e.g., `"Region_1, Region_2, ..."`).
+
+## File output
+
+After generating your JSON response, write the same JSON array to a file named `variables.json` in the project root directory using the `write` tool.

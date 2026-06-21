@@ -359,7 +359,8 @@ calibrate_binomial_formula <- function(X, beta1_init, size, target_mean,
   )
 }
 
-calibrate_poisson_formula <- function(X, beta1_init, target_mean, target_var) {
+calibrate_poisson_formula <- function(X, beta1_init, target_mean, target_var = NULL,
+                                       target_r2 = NULL) {
   X <- as.matrix(X)
   if (!is.numeric(X)) {
     stop("`X` must be a numeric matrix")
@@ -370,6 +371,24 @@ calibrate_poisson_formula <- function(X, beta1_init, target_mean, target_var) {
   if (length(target_mean) != 1 || !is.numeric(target_mean) || target_mean <= 0) {
     stop("`target_mean` must be a positive numeric scalar")
   }
+
+  if (is.null(target_r2) && is.null(target_var)) {
+    stop("one of `target_var` or `target_r2` must be provided")
+  }
+
+  if (!is.null(target_r2) && !is.null(target_var)) {
+    warning("both `target_var` and `target_r2` provided; using `target_r2`")
+    target_var <- NULL
+  }
+
+  if (!is.null(target_r2)) {
+    if (length(target_r2) != 1 || !is.numeric(target_r2) ||
+        target_r2 < 0 || target_r2 >= 1) {
+      stop("`target_r2` must be a numeric scalar in [0, 1)")
+    }
+    target_var <- target_mean / (1 - target_r2)
+  }
+
   if (length(target_var) != 1 || !is.numeric(target_var) || target_var <= 0) {
     stop("`target_var` must be a positive numeric scalar")
   }
@@ -674,5 +693,64 @@ calibrate_ordinal_formula <- function(X, beta1, target_probs) {
     beta0 = as.numeric(theta),
     beta1 = beta1,
     fitted_probs = as.numeric(fitted_probs)
+  )
+}
+
+calibrate_formula <- function(distribution, distribution_parameters, r2 = NULL,
+                               X, beta1_init) {
+  switch(distribution,
+    normal = {
+      target_mean <- distribution_parameters$mean
+      target_var <- distribution_parameters$sd^2
+      calibrate_normal_formula(X, beta1_init, target_mean, target_var, r2)
+    },
+    gamma = {
+      target_mean <- distribution_parameters$shape / distribution_parameters$rate
+      target_var <- distribution_parameters$shape / distribution_parameters$rate^2
+      calibrate_gamma_formula(X, beta1_init, target_mean, target_var, r2)
+    },
+    lognormal = {
+      ml <- distribution_parameters$meanlog
+      sdl <- distribution_parameters$sdlog
+      target_mean <- exp(ml + sdl^2 / 2)
+      target_var <- exp(2 * ml + sdl^2) * (exp(sdl^2) - 1)
+      calibrate_lognormal_formula(X, beta1_init, target_mean, target_var, r2)
+    },
+    beta = {
+      s1 <- distribution_parameters$shape1
+      s2 <- distribution_parameters$shape2
+      target_mean <- s1 / (s1 + s2)
+      target_var <- (s1 * s2) / ((s1 + s2)^2 * (s1 + s2 + 1))
+      calibrate_beta_formula(X, beta1_init, target_mean, target_var, r2)
+    },
+    poisson = {
+      target_mean <- distribution_parameters$lambda
+      poisson_r2 <- if (is.null(r2)) 0 else r2
+      calibrate_poisson_formula(X, beta1_init, target_mean,
+                                target_r2 = poisson_r2)
+    },
+    `negative binomial` = {
+      mu <- distribution_parameters$mu
+      sz <- distribution_parameters$size
+      target_mean <- mu
+      target_var <- (mu + mu^2 / sz) / (1 - r2)
+      calibrate_negative_binomial_formula(X, beta1_init, target_mean, target_var, r2)
+    },
+    binomial = {
+      tm <- distribution_parameters$size * distribution_parameters$prob
+      tv <- distribution_parameters$size * distribution_parameters$prob *
+            (1 - distribution_parameters$prob) / (1 - r2)
+      calibrate_binomial_formula(X, beta1_init, distribution_parameters$size,
+                                 tm, tv, r2)
+    },
+    `categorical-nominal` = {
+      calibrate_nominal_formula(X, beta1_init, distribution_parameters$probabilities)
+    },
+    `categorical-ordinal` = {
+      calibrate_ordinal_formula(X, beta1_init, distribution_parameters$probabilities)
+    },
+    `discrete uniform` = calibrate_discrete_uniform_formula(X, beta1_init),
+    uniform = calibrate_uniform_formula(X, beta1_init),
+    stop(sprintf("unsupported distribution: %s", distribution))
   )
 }
