@@ -4,7 +4,7 @@ mode: subagent
 permission:
   read: allow
   grep: allow
-  edit: deny
+  edit: allow
   bash: deny
   glob: deny
   webfetch: deny
