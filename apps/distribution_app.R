@@ -1,7 +1,18 @@
 library(shiny)
 library(ggplot2)
 library(jsonlite)
-source("R/plot_distribution.R")
+
+find_project_root <- function() {
+  d <- getwd()
+  while (d != dirname(d)) {
+    if (dir.exists(file.path(d, "synthdata"))) return(d)
+    d <- dirname(d)
+  }
+  stop("Cannot find project root (synthdata/ not found)")
+}
+
+root <- find_project_root()
+source(file.path(root, "R", "plot_distribution.R"))
 
 get_param_names <- function(distribution) {
   switch(distribution,
@@ -131,7 +142,8 @@ server <- function(input, output, session) {
   }
 
   observeEvent(input$load_from_file, {
-    load_from_file("synthdata/distributions.json", "distributions.json")
+    path <- file.path(find_project_root(), "synthdata", "distributions.json")
+    load_from_file(path, "distributions.json")
   })
 
   observeEvent(input$json_file_upload, {
@@ -296,7 +308,8 @@ server <- function(input, output, session) {
 
   observeEvent(input$save_refined, {
     req(values$vars)
-    writeLines(current_json(), "synthdata/distributions.json")
+    path <- file.path(find_project_root(), "synthdata", "distributions.json")
+    writeLines(current_json(), path)
     showNotification(
       "Saved to synthdata/distributions.json",
       type = "message", duration = 5)
