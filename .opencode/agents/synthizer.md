@@ -1,6 +1,6 @@
 ---
 description: Orchestrates the synthetic dataset generation pipeline end-to-end
-mode: subagent
+mode: primary
 permission:
   read: allow
   grep: allow
