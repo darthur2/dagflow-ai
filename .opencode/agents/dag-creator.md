@@ -37,9 +37,9 @@ Present these to the user individually and ask which they want to include. For e
 
 Wait for the user's response for each one. Only include the exogenous variables the user explicitly approves.
 
-### Step 3: Write the DAG to dag.json
+### Step 3: Write the DAG to synthdata/dag.json
 
-After the user has approved the exogenous variables, combine them with the endogenous variables and write the complete DAG to `dag.json` in the project root. The file must be valid JSON with exactly two fields: `nodes` and `edges`.
+After the user has approved the exogenous variables, combine them with the endogenous variables and write the complete DAG to `synthdata/dag.json` in the project root. The file must be valid JSON with exactly two fields: `nodes` and `edges`.
 
 ```json
 {
@@ -58,7 +58,7 @@ After the user has approved the exogenous variables, combine them with the endog
 Launch the Shiny app for the user to visually review and edit the DAG:
 
 ```bash
-Rscript -e "shiny::runApp('dag_app.R')"
+Rscript -e "shiny::runApp('apps/dag_app.R')"
 ```
 
 Explain to the user that the app allows them to:
@@ -66,16 +66,16 @@ Explain to the user that the app allows them to:
 - Toggle each exogenous variable on/off with checkboxes
 - Add or remove edges using the dropdown controls
 - Add or remove nodes (endogenous or exogenous)
-- Save their refined DAG back to `dag.json` with the "Save DAG" button
+- Save their refined DAG back to `synthdata/dag.json` with the "Save DAG" button
 
-Tell the user to click "Load from dag.json" in the app, make their edits, then click "Save DAG" when done.
+Tell the user to click "Load from synthdata/dag.json" in the app, make their edits, then click "Save DAG" when done.
 
 ### Step 5: Re-read the refined DAG
 
-After the user confirms they have saved, read the refined DAG from `dag.json`:
+After the user confirms they have saved, read the refined DAG from `synthdata/dag.json`:
 
 ```r
-dag <- jsonlite::fromJSON(paste(readLines("dag.json"), collapse = "\n"), simplifyVector = FALSE)
+dag <- jsonlite::fromJSON(paste(readLines("synthdata/dag.json"), collapse = "\n"), simplifyVector = FALSE)
 ```
 
 Validate that the DAG is still acyclic and contains all the expected nodes and edges.
@@ -92,7 +92,7 @@ Only after the exogenous variables have been fully defined and assigned distribu
 
 ### Step 7: Iterate if needed
 
-Ask the user if they are satisfied with the DAG or want to make further changes. If they want more changes, update the DAG JSON (by writing the updated `dag.json`) and re-launch the app for another review cycle. If they are satisfied, proceed to output the final DAG.
+Ask the user if they are satisfied with the DAG or want to make further changes. If they want more changes, update the DAG JSON (by writing the updated `synthdata/dag.json`) and re-launch the app for another review cycle. If they are satisfied, proceed to output the final DAG.
 
 ## Output format — STRICT
 

@@ -159,7 +159,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$load_from_file, {
     tryCatch({
-      dag <- load_dag_file("dag.json")
+      dag <- load_dag_file("synthdata/dag.json")
       populate_app(dag)
       showNotification(
         paste("Loaded", length(dag$nodes), "nodes and",
@@ -347,8 +347,8 @@ server <- function(input, output, session) {
 
   observeEvent(input$save_dag, {
     req(values$dag)
-    writeLines(current_json(), "dag.json")
-    showNotification("Saved to dag.json",
+    writeLines(current_json(), "synthdata/dag.json")
+    showNotification("Saved to synthdata/dag.json",
       type = "message", duration = 5)
   })
 }

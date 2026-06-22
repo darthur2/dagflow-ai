@@ -3,14 +3,14 @@ library(jsonlite)
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
-load_variables <- function(path = "variables.json") {
+load_variables <- function(path = "synthdata/variables.json") {
   if (!file.exists(path)) {
     stop("variables.json not found")
   }
   jsonlite::fromJSON(path, simplifyVector = FALSE)
 }
 
-save_variables <- function(vars, path = "variables.json") {
+save_variables <- function(vars, path = "synthdata/variables.json") {
   json <- jsonlite::toJSON(vars, pretty = TRUE, auto_unbox = TRUE)
   writeLines(json, path)
 }

@@ -131,7 +131,7 @@ server <- function(input, output, session) {
   }
 
   observeEvent(input$load_from_file, {
-    load_from_file("distributions.json", "distributions.json")
+    load_from_file("synthdata/distributions.json", "distributions.json")
   })
 
   observeEvent(input$json_file_upload, {
@@ -296,9 +296,9 @@ server <- function(input, output, session) {
 
   observeEvent(input$save_refined, {
     req(values$vars)
-    writeLines(current_json(), "distributions.json")
+    writeLines(current_json(), "synthdata/distributions.json")
     showNotification(
-      "Saved to distributions.json",
+      "Saved to synthdata/distributions.json",
       type = "message", duration = 5)
   })
 }

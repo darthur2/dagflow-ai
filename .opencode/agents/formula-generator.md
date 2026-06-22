@@ -100,7 +100,7 @@ Coefficients must be on the link scale implied by the target's distribution, so 
 
 ## File output
 
-Always write the final JSON object to `formulas.json` in the project root using the `write` tool.
+Always write the final JSON object to `synthdata/formulas.json` in the project root using the `write` tool.
 
 ### Example
 

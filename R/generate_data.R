@@ -33,9 +33,9 @@ update_formula_coefficients <- function(formula_entry, calib_result) {
 }
 
 generate_data <- function(n,
-                          dag_path = "dag.json",
-                          dist_path = "distributions.json",
-                          formula_path = "formulas.json",
+                          dag_path = "synthdata/dag.json",
+                          dist_path = "synthdata/distributions.json",
+                          formula_path = "synthdata/formulas.json",
                           output_path = NULL,
                           update_formulas = TRUE) {
   if (length(n) != 1 || !is.numeric(n) || n <= 0 || n != floor(n)) {

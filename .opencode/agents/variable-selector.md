@@ -65,4 +65,4 @@ If `number_of_categories` is 10 or fewer, `category_names` must be an explicit a
 
 ## File output
 
-After generating your JSON response, write the same JSON array to a file named `variables.json` in the project root directory using the `write` tool.
+After generating your JSON response, write the same JSON array to a file named `synthdata/variables.json` in the project root directory using the `write` tool.

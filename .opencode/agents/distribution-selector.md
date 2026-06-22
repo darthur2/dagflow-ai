@@ -24,7 +24,7 @@ Focus on what distribution a domain expert would most naturally associate with t
 Variable metadata comes from one of two sources (checked in order):
 
 1. **Inline** — If the user provides variable JSON in their message, use it.
-2. **variables.json** — Otherwise, read `variables.json` from the project root. This file is written by the `@variable-selector` agent.
+2. **synthdata/variables.json** — Otherwise, read `synthdata/variables.json` from the project root. This file is written by the `@variable-selector` agent.
 
 You MUST select only from the following supported distributions: **normal**, **gamma**, **beta**, **lognormal**, **uniform**, **discrete uniform**, **categorical-nominal**, **categorical-ordinal**, **binomial**, **negative binomial**, **poisson**.
 
@@ -83,16 +83,16 @@ Every quantitative variable includes a `bounds` field. Include those values as `
 After the initial distribution run, launch the interactive visualization app with:
 
 ```bash
-Rscript -e "shiny::runApp('distribution_app.R')"
+Rscript -e "shiny::runApp('apps/distribution_app.R')"
 ```
 
-The human may review and adjust parameters visually. When they click "Save Refined JSON", the app overwrites `distributions.json` with the adjusted parameters.
+The human may review and adjust parameters visually. When they click "Save Refined JSON", the app overwrites `synthdata/distributions.json` with the adjusted parameters.
 
-On subsequent runs, `distributions.json` already contains the human-refined parameters, so you can validate them as-is.
+On subsequent runs, `synthdata/distributions.json` already contains the human-refined parameters, so you can validate them as-is.
 
 ## File output
 
-Always write the final JSON array to `distributions.json` in the project root using the `write` tool. This file is consumed by the interactive visualization app and downstream agents.
+Always write the final JSON array to `synthdata/distributions.json` in the project root using the `write` tool. This file is consumed by the interactive visualization app and downstream agents.
 
 ## Output format — STRICT
 
