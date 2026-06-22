@@ -3,14 +3,29 @@ library(jsonlite)
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
-load_variables <- function(path = "synthdata/variables.json") {
+find_project_root <- function() {
+  d <- getwd()
+  while (d != dirname(d)) {
+    if (dir.exists(file.path(d, "synthdata"))) return(d)
+    d <- dirname(d)
+  }
+  stop("Cannot find project root (synthdata/ not found)")
+}
+
+load_variables <- function(path = NULL) {
+  if (is.null(path)) {
+    path <- file.path(find_project_root(), "synthdata", "variables.json")
+  }
   if (!file.exists(path)) {
     stop("variables.json not found")
   }
   jsonlite::fromJSON(path, simplifyVector = FALSE)
 }
 
-save_variables <- function(vars, path = "synthdata/variables.json") {
+save_variables <- function(vars, path = NULL) {
+  if (is.null(path)) {
+    path <- file.path(find_project_root(), "synthdata", "variables.json")
+  }
   json <- jsonlite::toJSON(vars, pretty = TRUE, auto_unbox = TRUE)
   writeLines(json, path)
 }
@@ -69,7 +84,7 @@ server <- function(input, output, session) {
     names <- vapply(values$vars, function(v) v$name %||% "", character(1))
     choices <- setNames(seq_along(values$vars), names)
     selected <- isolate(input$variable_select)
-    if (is.null(selected) || !selected %in% names(choices)) {
+    if (is.null(selected) || !selected %in% as.character(choices)) {
       selected <- choices[1]
     }
     updateSelectInput(session, "variable_select",
