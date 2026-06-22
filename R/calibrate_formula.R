@@ -265,8 +265,7 @@ calibrate_beta_formula <- function(X, beta1_init, target_mean, target_var, targe
   )
 }
 
-calibrate_binomial_formula <- function(X, beta1_init, size, target_mean,
-                                        target_var, target_r2) {
+calibrate_binomial_formula <- function(X, beta1_init, size, target_mean, target_var, target_r2) {
   X <- as.matrix(X)
   if (!is.numeric(X)) {
     stop("`X` must be a numeric matrix")
@@ -359,8 +358,7 @@ calibrate_binomial_formula <- function(X, beta1_init, size, target_mean,
   )
 }
 
-calibrate_poisson_formula <- function(X, beta1_init, target_mean, target_var = NULL,
-                                       target_r2 = NULL) {
+calibrate_poisson_formula <- function(X, beta1_init, target_mean, target_var = NULL, target_r2 = NULL) {
   X <- as.matrix(X)
   if (!is.numeric(X)) {
     stop("`X` must be a numeric matrix")
@@ -452,8 +450,7 @@ calibrate_poisson_formula <- function(X, beta1_init, target_mean, target_var = N
   )
 }
 
-calibrate_negative_binomial_formula <- function(X, beta1_init, target_mean,
-                                                 target_var, target_r2) {
+calibrate_negative_binomial_formula <- function(X, beta1_init, target_mean, target_var, target_r2) {
   X <- as.matrix(X)
   if (!is.numeric(X)) {
     stop("`X` must be a numeric matrix")
@@ -696,6 +693,14 @@ calibrate_ordinal_formula <- function(X, beta1, target_probs) {
   )
 }
 
+calibrate_uniform_formula <- function(X, beta1_init, target_r2) {
+  calibrate_normal_formula(X, beta1_init, target_mean = 0, target_var = 1, target_r2 = target_r2)
+}
+
+calibrate_discrete_uniform_formula <- function(X, beta1_init, target_r2) {
+  calibrate_normal_formula(X, beta1_init, target_mean = 0, target_var = 1, target_r2 = target_r2)
+}
+
 calibrate_formula <- function(distribution, distribution_parameters, r2 = NULL,
                                X, beta1_init) {
   switch(distribution,
@@ -749,8 +754,12 @@ calibrate_formula <- function(distribution, distribution_parameters, r2 = NULL,
     `categorical-ordinal` = {
       calibrate_ordinal_formula(X, beta1_init, distribution_parameters$probabilities)
     },
-    `discrete uniform` = calibrate_discrete_uniform_formula(X, beta1_init),
-    uniform = calibrate_uniform_formula(X, beta1_init),
+    uniform = {
+      calibrate_uniform_formula(X, beta1_init, r2)
+    },
+    `discrete uniform` = {
+      calibrate_discrete_uniform_formula(X, beta1_init, r2)
+    },
     stop(sprintf("unsupported distribution: %s", distribution))
   )
 }

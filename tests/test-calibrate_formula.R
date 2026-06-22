@@ -852,3 +852,142 @@ test_that("ordinal errors on degenerate linear predictor", {
   X <- matrix(rep(3, 100), 50, 2)
   expect_error(calibrate_ordinal_formula(X, c(1, 1), c(0.3, 0.7)), "no variation")
 })
+
+test_that("uniform recovers exact beta1 and sigma_error at true target_r2", {
+  set.seed(1)
+  n <- 1000
+  p <- 3
+  X <- matrix(rnorm(n * p), n, p)
+  beta1_init <- c(0.5, -0.3, 0.8)
+
+  x_mean <- colMeans(X)
+  x_cov <- cov(X)
+  m <- sum(x_mean * beta1_init)
+  v <- as.numeric(t(beta1_init) %*% x_cov %*% beta1_init)
+
+  target_r2 <- 0.6
+  c <- sqrt(target_r2 / v)
+  expected_beta1 <- c * beta1_init
+  expected_sigma <- sqrt(1 - target_r2)
+  expected_beta0 <- -c * m
+
+  result <- calibrate_uniform_formula(X, beta1_init, target_r2)
+
+  expect_equal(result$fitted_mean, 0, tolerance = 1e-10)
+  expect_equal(result$fitted_var, 1, tolerance = 1e-10)
+  expect_equal(result$beta1, expected_beta1, tolerance = 1e-10)
+  expect_equal(result$sigma_error, expected_sigma, tolerance = 1e-10)
+  expect_equal(result$beta0, expected_beta0, tolerance = 1e-10)
+  expect_equal(result$r2, target_r2, tolerance = 1e-10)
+})
+
+test_that("uniform target_r2 = 0 gives beta1 = 0 and all error", {
+  set.seed(5)
+  X <- matrix(rnorm(200), 100, 2)
+  beta1_init <- c(1, -2)
+
+  result <- calibrate_uniform_formula(X, beta1_init, 0)
+
+  expect_equal(result$beta1, c(0, 0))
+  expect_equal(result$sigma_error, 1)
+  expect_equal(result$beta0, 0)
+  expect_equal(result$r2, 0)
+})
+
+test_that("uniform target_r2 = 1 gives sigma_error = 0 and |c| = c_max", {
+  set.seed(6)
+  X <- matrix(rnorm(100, mean = 0, sd = 2), 100, 1)
+  beta1_init <- c(3)
+
+  v <- as.numeric(t(beta1_init) %*% cov(X) %*% beta1_init)
+  c_max <- sqrt(1 / v)
+
+  result <- calibrate_uniform_formula(X, beta1_init, 1)
+
+  expect_equal(result$sigma_error, 0)
+  expect_equal(abs(result$beta1 / beta1_init), c_max, tolerance = 1e-10)
+  expect_equal(result$r2, 1)
+})
+
+test_that("uniform works with intermediate target_r2", {
+  set.seed(7)
+  n <- 1000
+  p <- 2
+  X <- matrix(rnorm(n * p, mean = c(1, -2), sd = c(1, 3)), n, p)
+  beta1_init <- c(2, 0.5)
+  target_r2 <- 0.6
+
+  result <- calibrate_uniform_formula(X, beta1_init, target_r2)
+
+  x_mean <- colMeans(X)
+  x_cov <- cov(X)
+  m <- sum(x_mean * beta1_init)
+  v <- as.numeric(t(beta1_init) %*% x_cov %*% beta1_init)
+  abs_c <- sqrt(target_r2 / v)
+  expected_beta1 <- abs_c * beta1_init
+
+  expect_equal(result$beta1, expected_beta1, tolerance = 1e-10)
+  expect_equal(result$sigma_error, sqrt(1 - target_r2), tolerance = 1e-10)
+  expect_equal(result$beta0, -abs_c * m, tolerance = 1e-10)
+  expect_equal(result$r2, target_r2, tolerance = 1e-10)
+})
+
+test_that("uniform degenerate X (v ≈ 0) returns beta1 = 0", {
+  X <- matrix(rep(5, 100), 100, 1)
+  beta1_init <- c(10)
+
+  result <- calibrate_uniform_formula(X, beta1_init, 0.5)
+
+  expect_equal(result$beta1, 0)
+  expect_equal(result$sigma_error, 1)
+  expect_equal(result$beta0, 0)
+  expect_equal(result$r2, 0)
+})
+
+test_that("uniform m = 0 preserves beta1 direction and sets beta0 ≈ 0", {
+  set.seed(9)
+  X <- matrix(rnorm(1000, mean = 0), 500, 2)
+  beta1_init <- c(2, -1)
+  target_r2 <- 0.5
+
+  result <- calibrate_uniform_formula(X, beta1_init, target_r2)
+
+  expect_equal(result$beta0, 0, tolerance = 0.02)
+  expect_true(all(result$beta1 / beta1_init > 0))
+})
+
+test_that("uniform errors on invalid target_r2", {
+  X <- matrix(rnorm(100), 50, 2)
+  beta1_init <- c(1, 1)
+
+  expect_error(calibrate_uniform_formula(X, beta1_init, -0.1), "between 0 and 1")
+  expect_error(calibrate_uniform_formula(X, beta1_init, 1.5), "between 0 and 1")
+  expect_error(calibrate_uniform_formula(X, beta1_init, "a"), "numeric scalar")
+})
+
+test_that("discrete uniform works identically to uniform", {
+  set.seed(1)
+  X <- matrix(rnorm(300), 100, 3)
+  beta1_init <- c(1, -0.5, 0.3)
+  target_r2 <- 0.7
+
+  r1 <- calibrate_uniform_formula(X, beta1_init, target_r2)
+  r2 <- calibrate_discrete_uniform_formula(X, beta1_init, target_r2)
+
+  expect_equal(r1, r2)
+})
+
+test_that("discrete uniform recovers exact parameters", {
+  set.seed(2)
+  n <- 1000
+  p <- 2
+  X <- matrix(rnorm(n * p), n, p)
+  beta1_init <- c(0.8, -0.4)
+  target_r2 <- 0.6
+
+  result <- calibrate_discrete_uniform_formula(X, beta1_init, target_r2)
+
+  expect_equal(result$fitted_mean, 0, tolerance = 1e-10)
+  expect_equal(result$fitted_var, 1, tolerance = 1e-10)
+  expect_equal(result$r2, target_r2, tolerance = 1e-10)
+})

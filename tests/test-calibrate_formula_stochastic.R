@@ -338,3 +338,65 @@ test_that("calibrate_ordinal_formula recovers parameters from stochastic simulat
     }
   }
 })
+
+test_that("calibrate_uniform_formula recovers parameters from stochastic simulation", {
+  set.seed(10001)
+  n <- 2000; p <- 3
+  X <- matrix(rnorm(n * p), n, p)
+  x_cov <- cov(X)
+  n_sets <- 5; n_draws <- 5
+
+  for (i in seq_len(n_sets)) {
+    set.seed(10001 + i)
+    beta1_dir <- rnorm(p, 0, 0.3)
+    target_r2 <- runif(1, 0.2, 0.8)
+    v_init <- as.numeric(t(beta1_dir) %*% x_cov %*% beta1_dir)
+    if (v_init < 1e-10) next
+    c_true <- sqrt(target_r2 / v_init)
+    beta1_true <- c_true * beta1_dir
+    sigma_error_true <- sqrt(1 - target_r2)
+
+    for (j in seq_len(n_draws)) {
+      set.seed(10001 + i * 100 + j)
+      lp_true <- as.numeric(X %*% beta1_true)
+      beta0_true <- -mean(lp_true)
+      y <- as.numeric(beta0_true + lp_true + rnorm(n, 0, sigma_error_true))
+      result <- calibrate_uniform_formula(X, beta1_dir, target_r2)
+
+      expect_equal(result$beta0, beta0_true, tolerance = 0.15)
+      expect_equal(result$beta1, beta1_true, tolerance = 0.15)
+      expect_equal(result$sigma_error, sigma_error_true, tolerance = 0.15)
+    }
+  }
+})
+
+test_that("calibrate_discrete_uniform_formula recovers parameters from stochastic simulation", {
+  set.seed(11001)
+  n <- 2000; p <- 3
+  X <- matrix(rnorm(n * p), n, p)
+  x_cov <- cov(X)
+  n_sets <- 5; n_draws <- 5
+
+  for (i in seq_len(n_sets)) {
+    set.seed(11001 + i)
+    beta1_dir <- rnorm(p, 0, 0.3)
+    target_r2 <- runif(1, 0.2, 0.8)
+    v_init <- as.numeric(t(beta1_dir) %*% x_cov %*% beta1_dir)
+    if (v_init < 1e-10) next
+    c_true <- sqrt(target_r2 / v_init)
+    beta1_true <- c_true * beta1_dir
+    sigma_error_true <- sqrt(1 - target_r2)
+
+    for (j in seq_len(n_draws)) {
+      set.seed(11001 + i * 100 + j)
+      lp_true <- as.numeric(X %*% beta1_true)
+      beta0_true <- -mean(lp_true)
+      y <- as.numeric(beta0_true + lp_true + rnorm(n, 0, sigma_error_true))
+      result <- calibrate_discrete_uniform_formula(X, beta1_dir, target_r2)
+
+      expect_equal(result$beta0, beta0_true, tolerance = 0.15)
+      expect_equal(result$beta1, beta1_true, tolerance = 0.15)
+      expect_equal(result$sigma_error, sigma_error_true, tolerance = 0.15)
+    }
+  }
+})
