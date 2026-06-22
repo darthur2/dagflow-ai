@@ -1,13 +1,13 @@
 {
   "nodes": [
-    { "id": "age", "type": "endogenous" },
+    { "id": "age", "type": "exogenous" },
     { "id": "body_mass_index", "type": "endogenous" },
     { "id": "smoking_status", "type": "endogenous" },
     { "id": "exercise_frequency", "type": "endogenous" },
     { "id": "ldl_cholesterol", "type": "endogenous" },
     { "id": "diabetes_status", "type": "endogenous" },
     { "id": "alcohol_units_per_week", "type": "endogenous" },
-    { "id": "family_history_hypertension", "type": "endogenous" },
+    { "id": "family_history_hypertension", "type": "exogenous" },
     { "id": "sodium_intake_mg", "type": "endogenous" },
     { "id": "systolic_blood_pressure", "type": "endogenous" },
     { "id": "socioeconomic_status", "type": "exogenous" }

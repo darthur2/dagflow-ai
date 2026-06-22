@@ -2,125 +2,56 @@
   {
     "name": "systolic_blood_pressure",
     "distribution": "normal",
-    "distribution_parameters": {
-      "mean": 130,
-      "sd": 18,
-      "min": 80,
-      "max": 220
-    }
+    "distribution_parameters": { "mean": 130, "sd": 18, "min": 80, "max": 220 }
   },
   {
     "name": "age",
     "distribution": "normal",
-    "distribution_parameters": {
-      "mean": 55,
-      "sd": 13,
-      "min": 18,
-      "max": 100
-    }
+    "distribution_parameters": { "mean": 55, "sd": 20, "min": 18, "max": 100 }
   },
   {
     "name": "body_mass_index",
     "distribution": "lognormal",
-    "distribution_parameters": {
-      "meanlog": 2.8,
-      "sdlog": 0.35,
-      "min": 12,
-      "max": 50
-    }
+    "distribution_parameters": { "meanlog": 3.2, "sdlog": 0.28, "min": 12, "max": 50 }
   },
   {
     "name": "smoking_status",
     "distribution": "categorical-nominal",
-    "distribution_parameters": {
-      "categories": [
-        "Never",
-        "Former",
-        "Current"
-      ],
-      "probabilities": [
-        0.55,
-        0.25,
-        0.2
-      ]
-    }
+    "distribution_parameters": { "categories": ["Never", "Former", "Current"], "probabilities": [0.55, 0.25, 0.20] }
   },
   {
     "name": "exercise_frequency",
     "distribution": "categorical-ordinal",
-    "distribution_parameters": {
-      "categories": [
-        "None",
-        "Light",
-        "Moderate",
-        "Vigorous"
-      ],
-      "probabilities": [
-        0.35,
-        0.3,
-        0.25,
-        0.1
-      ]
-    }
+    "distribution_parameters": { "categories": ["None", "Light", "Moderate", "Vigorous"], "probabilities": [0.35, 0.30, 0.25, 0.10] }
   },
   {
     "name": "ldl_cholesterol",
     "distribution": "lognormal",
-    "distribution_parameters": {
-      "meanlog": 4.4,
-      "sdlog": 0.4,
-      "min": 50,
-      "max": 300
-    }
+    "distribution_parameters": { "meanlog": 5.2, "sdlog": 0.3, "min": 50, "max": 300 }
   },
   {
     "name": "diabetes_status",
     "distribution": "categorical-nominal",
-    "distribution_parameters": {
-      "categories": [
-        "None",
-        "Type_1",
-        "Type_2"
-      ],
-      "probabilities": [
-        0.85,
-        0.03,
-        0.12
-      ]
-    }
+    "distribution_parameters": { "categories": ["None", "Type_1", "Type_2"], "probabilities": [0.85, 0.03, 0.12] }
   },
   {
     "name": "alcohol_units_per_week",
     "distribution": "gamma",
-    "distribution_parameters": {
-      "shape": 1.5,
-      "rate": 0.3,
-      "min": 0,
-      "max": 70
-    }
+    "distribution_parameters": { "shape": 1.5, "rate": 0.3, "min": 0, "max": 70 }
   },
   {
     "name": "family_history_hypertension",
     "distribution": "categorical-nominal",
-    "distribution_parameters": {
-      "categories": [
-        "No",
-        "Yes"
-      ],
-      "probabilities": [
-        0.65,
-        0.35
-      ]
-    }
+    "distribution_parameters": { "categories": ["No", "Yes"], "probabilities": [0.65, 0.35] }
   },
   {
     "name": "sodium_intake_mg",
     "distribution": "normal",
-    "distribution_parameters": {
-      "mean": 3000,
-      "sd": 940,
-      "min": 500,
-      "max": 8000
-    }
+    "distribution_parameters": { "mean": 3000, "sd": 1000, "min": 500, "max": 8000 }
+  },
+  {
+    "name": "socioeconomic_status",
+    "distribution": "categorical-ordinal",
+    "distribution_parameters": { "categories": ["Low", "Medium", "High"], "probabilities": [0.25, 0.50, 0.25] }
   }
 ]

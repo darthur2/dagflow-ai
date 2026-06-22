@@ -130,5 +130,17 @@
     "modality": "unimodal",
     "distribution": "normal",
     "distribution_parameters": { "mean": 3000, "sd": 1000, "min": 500, "max": 8000 }
+  },
+  {
+    "name": "socioeconomic_status",
+    "short_description": "Socioeconomic status index based on income, education, and occupation",
+    "reason_for_inclusion": "Acts as an upstream confounder influencing BMI, exercise, smoking, alcohol, sodium intake, and blood pressure",
+    "data_type": "categorical",
+    "measurement_level": "ordinal",
+    "effect_type": "fixed",
+    "number_of_categories": 3,
+    "category_names": ["Low", "Medium", "High"],
+    "distribution": "categorical-ordinal",
+    "distribution_parameters": { "categories": ["Low", "Medium", "High"], "probabilities": [0.25, 0.50, 0.25] }
   }
 ]

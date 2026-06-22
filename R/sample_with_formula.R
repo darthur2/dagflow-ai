@@ -10,45 +10,80 @@ sample_with_formula <- function(distribution, dist_params, calib_result, X, n) {
 
   switch(distribution,
     normal = {
-      sample_normal(n, X = X, beta1 = calib_result$beta1,
-                    beta0 = calib_result$beta0,
-                    sd = calib_result$sigma_error,
-                    min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      if (is.null(X)) {
+        sample_normal(n, mean = to_vec(dist_params$mean), sd = to_vec(dist_params$sd),
+                      min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      } else {
+        sample_normal(n, X = X, beta1 = calib_result$beta1,
+                      beta0 = calib_result$beta0,
+                      sd = calib_result$sigma_error,
+                      min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      }
     },
     gamma = {
-      sample_gamma(n, X = X, beta1 = calib_result$beta1,
-                   beta0 = calib_result$beta0,
-                   shape = calib_result$shape,
-                   min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      if (is.null(X)) {
+        sample_gamma(n, shape = to_vec(dist_params$shape), rate = to_vec(dist_params$rate),
+                     min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      } else {
+        sample_gamma(n, X = X, beta1 = calib_result$beta1,
+                     beta0 = calib_result$beta0,
+                     shape = calib_result$shape,
+                     min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      }
     },
     lognormal = {
-      sample_lognormal(n, X = X, beta1 = calib_result$beta1,
-                       beta0 = calib_result$beta0,
-                       sdlog = calib_result$sigma,
-                       min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      if (is.null(X)) {
+        sample_lognormal(n, meanlog = to_vec(dist_params$meanlog), sdlog = to_vec(dist_params$sdlog),
+                         min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      } else {
+        sample_lognormal(n, X = X, beta1 = calib_result$beta1,
+                         beta0 = calib_result$beta0,
+                         sdlog = calib_result$sigma,
+                         min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      }
     },
     beta = {
-      sample_beta(n, X = X, beta1 = calib_result$beta1,
-                  beta0 = calib_result$beta0,
-                  phi = calib_result$phi,
-                  min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      if (is.null(X)) {
+        sample_beta(n, shape1 = to_vec(dist_params$shape1), shape2 = to_vec(dist_params$shape2),
+                    min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      } else {
+        sample_beta(n, X = X, beta1 = calib_result$beta1,
+                    beta0 = calib_result$beta0,
+                    phi = calib_result$phi,
+                    min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      }
     },
     poisson = {
-      sample_poisson(n, X = X, beta1 = calib_result$beta1,
-                     beta0 = calib_result$beta0,
-                     min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      if (is.null(X)) {
+        sample_poisson(n, lambda = to_vec(dist_params$lambda),
+                       min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      } else {
+        sample_poisson(n, X = X, beta1 = calib_result$beta1,
+                       beta0 = calib_result$beta0,
+                       min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      }
     },
     `negative binomial` = {
-      sample_negative_binomial(n, X = X, beta1 = calib_result$beta1,
-                               beta0 = calib_result$beta0,
-                               size = calib_result$size,
-                               min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      if (is.null(X)) {
+        sample_negative_binomial(n, size = to_vec(dist_params$size), mu = to_vec(dist_params$mu),
+                                 min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      } else {
+        sample_negative_binomial(n, X = X, beta1 = calib_result$beta1,
+                                 beta0 = calib_result$beta0,
+                                 size = calib_result$size,
+                                 min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      }
     },
     binomial = {
-      sample_binomial(n, X = X, beta1 = calib_result$beta1,
-                      beta0 = calib_result$beta0,
-                      size = calib_result$size,
-                      min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      if (is.null(X)) {
+        sample_binomial(n, size = to_vec(dist_params$size), prob = to_vec(dist_params$prob),
+                        min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      } else {
+        sample_binomial(n, X = X, beta1 = calib_result$beta1,
+                        beta0 = calib_result$beta0,
+                        size = calib_result$size,
+                        min = to_vec(dist_params$min), max = to_vec(dist_params$max))
+      }
     },
     `categorical-nominal` = {
       if (is.null(X)) {

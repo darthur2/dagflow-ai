@@ -26,7 +26,7 @@ build_design_matrix <- function(target, data, formula_entry) {
       categories <- p$categories
       coefs <- as.numeric(p$coefficient)
 
-      if (length(categories) != length(coefs)) {
+      if (length(coefs) %% length(categories) != 0) {
         stop(sprintf(
           "mismatch: %s has %d categories but %d coefficients for '%s'",
           col_name, length(categories), length(coefs), target
@@ -34,11 +34,13 @@ build_design_matrix <- function(target, data, formula_entry) {
       }
 
       values <- data[[col_name]]
+      n_groups <- length(coefs) %/% length(categories)
       for (i in seq_along(categories)) {
         cat_val <- categories[i]
         dummy_name <- paste0(col_name, "_", cat_val)
         cols[[dummy_name]] <- as.numeric(values == cat_val)
-        beta1_init <- c(beta1_init, coefs[i])
+        idx <- (i - 1) * n_groups + seq_len(n_groups)
+        beta1_init <- c(beta1_init, coefs[idx])
       }
     } else {
       # Continuous predictor
