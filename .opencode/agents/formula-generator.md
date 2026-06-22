@@ -40,7 +40,7 @@ Each equation object has:
 - `target` — the name of the endogenous response variable (must match the variable list)
 - `distribution` — the distribution name from the distribution-selector output
 - `distribution_parameters` — the distribution parameters from the distribution-selector output (included as-is)
-- `r2` — the proportion of conditional variance in the response explained by its parents (between 0 and 1)
+- `r2` — the proportion of conditional variance in the response explained by its parents (between 0 and 1, or `null` for categorical targets)
 - `predictors` — an array of predictor objects
 
 ### Predictor objects
@@ -82,6 +82,8 @@ Coefficients must be on the link scale implied by the target's distribution, so 
 | negative binomial | log | Same as poisson |
 | categorical-nominal | multinomial logit | Coefficients represent log-odds relative to the reference category |
 | categorical-ordinal | cumulative logit | Single coefficient vector shifts the latent variable; positive coefficients shift mass toward higher categories |
+| uniform | probit | `pnorm(eta)` maps the linear predictor to a uniform probability. Coefficient is on the latent N(0,1) scale produced by `calibrate_uniform_formula`. Typical range: 0.1–2.0 |
+| discrete uniform | probit | Same as uniform. Uses `calibrate_discrete_uniform_formula` which also targets N(0,1) on the latent scale |
 
 ### General guidelines
 
@@ -92,6 +94,11 @@ Coefficients must be on the link scale implied by the target's distribution, so 
 - For log-link distributions, coefficients represent proportional effects, so a coefficient of 0.01 means ~1% change in the response per unit predictor
 - Prefer modest coefficient magnitudes that would produce realistic, non-extreme predictions within the variable's bounds
 - Choose a realistic `r2` between 0 and 1. Higher values (0.5–0.9) for well-understood deterministic relationships where the parents are known to be strong drivers. Lower values (0.1–0.4) for noisy social/behavioral phenomena or when the parents are weak or indirect causes
+- For `categorical-nominal` and `categorical-ordinal` targets, `r2` is not used by the calibrator. You can omit it or set it to `null`.
+
+## File output
+
+Always write the final JSON object to `formulas.json` in the project root using the `write` tool.
 
 ### Example
 
