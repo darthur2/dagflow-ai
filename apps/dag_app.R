@@ -1,7 +1,18 @@
 library(shiny)
 library(visNetwork)
 library(jsonlite)
-source("R/plot_dag.R")
+
+find_project_root <- function() {
+  d <- getwd()
+  while (d != dirname(d)) {
+    if (dir.exists(file.path(d, "synthdata"))) return(d)
+    d <- dirname(d)
+  }
+  stop("Cannot find project root (synthdata/ not found)")
+}
+
+root <- find_project_root()
+source(file.path(root, "R", "plot_dag.R"))
 
 load_dag_file <- function(path) {
   if (!file.exists(path)) {
@@ -159,7 +170,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$load_from_file, {
     tryCatch({
-      dag <- load_dag_file("synthdata/dag.json")
+      dag <- load_dag_file(file.path(find_project_root(), "synthdata", "dag.json"))
       populate_app(dag)
       showNotification(
         paste("Loaded", length(dag$nodes), "nodes and",
@@ -347,7 +358,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$save_dag, {
     req(values$dag)
-    writeLines(current_json(), "synthdata/dag.json")
+    writeLines(current_json(), file.path(find_project_root(), "synthdata", "dag.json"))
     showNotification("Saved to synthdata/dag.json",
       type = "message", duration = 5)
   })
