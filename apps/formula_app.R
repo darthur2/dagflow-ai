@@ -70,14 +70,16 @@ format_formula_string <- function(eq) {
   }
 
   predictors <- eq$predictors
+  int <- eq$intercept %||% 0
+
   if (length(predictors) == 0) {
-    return(sprintf("%s ~ (no predictors)", lhs))
+    return(sprintf("%s ~ %s", lhs, paste(int, collapse = ", ")))
   }
 
   rhs_parts <- vapply(predictors, format_predictor_text, character(1))
   rhs <- paste(rhs_parts, collapse = "\n  + ")
 
-  sprintf("%s ~ %.4f\n  + %s", lhs, as.numeric(eq$calibrated_beta0 %||% 0), rhs)
+  sprintf("%s ~ %s\n  + %s", lhs, paste(int, collapse = ", "), rhs)
 }
 
 format_dist_summary <- function(eq) {
@@ -87,55 +89,34 @@ format_dist_summary <- function(eq) {
   paste(c(dist, parts), collapse = "\n")
 }
 
-format_coef_display <- function(coef) {
-  if (length(coef) == 1) {
-    sprintf("%.4f", as.numeric(coef))
-  } else {
-    paste(sprintf("%.4f", as.numeric(coef)), collapse = ", ")
-  }
-}
-
-coef_input_id <- function(target, idx) {
-  paste0("coef_", gsub("[^a-zA-Z0-9]", "_", target), "_", idx)
-}
-
-intercept_input_id <- function(target) {
-  paste0("intercept_", gsub("[^a-zA-Z0-9]", "_", target))
+input_id <- function(target, suffix) {
+  paste0("f_", gsub("[^a-zA-Z0-9]", "_", target), "_", suffix)
 }
 
 ui <- fluidPage(
   titlePanel("Formula Explorer"),
   sidebarLayout(
     sidebarPanel(
-      width = 4,
+      width = 5,
       h5("Load"),
       actionButton("load_btn", "Load from formulas.json",
                    class = "btn-primary", style = "width: 100%;"),
       br(), br(),
       selectInput("eq_select", "Select Target Variable", choices = NULL),
       hr(),
-      h4("Response Details"),
+      h4("Distribution"),
       verbatimTextOutput("dist_summary"),
       hr(),
-      h4("R²"),
-      verbatimTextOutput("r2_display"),
-      hr(),
-      h4("Intercept"),
-      verbatimTextOutput("intercept_display"),
+      h4("Parameters"),
+      uiOutput("param_editors"),
       br(),
       actionButton("save_btn", "Save Changes",
                    class = "btn-warning", style = "width: 100%;")
     ),
     mainPanel(
-      width = 8,
+      width = 7,
       h4("Formula"),
-      verbatimTextOutput("formula_display"),
-      hr(),
-      h4("Predictors"),
-      tableOutput("predictor_table"),
-      hr(),
-      h4("Calibrated Coefficients"),
-      uiOutput("coef_editors")
+      verbatimTextOutput("formula_display")
     )
   )
 )
@@ -175,117 +156,81 @@ server <- function(input, output, session) {
     format_dist_summary(current_eq())
   })
 
-  output$r2_display <- renderText({
-    req(current_eq())
-    r2 <- current_eq()$r2
-    if (is.null(r2) || length(r2) == 0 || identical(r2, list())) {
-      "N/A (categorical)"
-    } else {
-      sprintf("%.2f", as.numeric(r2))
-    }
-  })
-
-  output$intercept_display <- renderText({
-    req(current_eq())
-    b0 <- current_eq()$calibrated_beta0
-    if (is.null(b0)) {
-      "Not calibrated"
-    } else if (length(b0) == 1) {
-      sprintf("%.4f", as.numeric(b0))
-    } else {
-      paste(sprintf("%.4f", as.numeric(b0)), collapse = ", ")
-    }
-  })
-
   output$formula_display <- renderText({
     req(current_eq())
     format_formula_string(current_eq())
   })
 
-  output$predictor_table <- renderTable({
-    req(current_eq())
-    eq <- current_eq()
-    preds <- eq$predictors
-    if (length(preds) == 0) return(data.frame(Message = "No predictors"))
-    do.call(rbind, lapply(preds, function(p) {
-      col <- p$column
-      ref <- p$reference %||% ""
-      cats <- paste(unlist(p$categories %||% list()), collapse = ", ")
-      coef_display <- format_coef_display(p$coefficient)
-      data.frame(
-        Predictor = col,
-        Type = if (is.null(p$reference)) "continuous" else "categorical",
-        Reference = ref,
-        Categories = cats,
-        Coefficients = coef_display,
-        stringsAsFactors = FALSE
-      )
-    }))
-  }, striped = TRUE, spacing = "s", width = "100%")
-
-  output$coef_editors <- renderUI({
+  output$param_editors <- renderUI({
     req(current_eq())
     eq <- current_eq()
     target <- eq$target
-    preds <- eq$predictors
     link <- distribution_link(eq$distribution)
 
-    if (length(preds) == 0) return(p("No predictors to edit"))
-
     items <- list()
-    idx <- 1
-    for (p in preds) {
-      col <- p$column
-      coef <- as.numeric(p$coefficient)
-      ref <- p$reference %||% ""
-      cats <- unlist(p$categories %||% list())
 
-      label <- if (length(cats) > 0) {
-        sprintf("%s (ref=%s, cats=%s) [%s]", col, ref,
-                paste(cats, collapse = ", "), link)
-      } else {
-        sprintf("%s [%s]", col, link)
-      }
-
-      if (length(coef) == 1) {
-        items[[length(items) + 1]] <- numericInput(
-          coef_input_id(target, idx),
-          label = label,
-          value = coef,
-          step = 0.001
-        )
-        idx <- idx + 1
-      } else {
-        for (j in seq_along(coef)) {
-          cat_label <- if (length(cats) >= j) sprintf("%s (%s)", label, cats[j]) else label
-          items[[length(items) + 1]] <- numericInput(
-            coef_input_id(target, idx),
-            label = cat_label,
-            value = coef[j],
-            step = 0.001
-          )
-          idx <- idx + 1
-        }
-      }
+    r2 <- eq$r2
+    if (is.null(r2) || length(r2) == 0 || identical(r2, list())) {
+      items[[length(items) + 1]] <- p(style = "color: #666; font-size: 0.9em;",
+                                       "R²: N/A (categorical target)")
+    } else {
+      items[[length(items) + 1]] <- numericInput(
+        input_id(target, "r2"),
+        label = "R² (0–1)",
+        value = as.numeric(r2),
+        min = 0, max = 1, step = 0.01
+      )
     }
 
-    b0 <- eq$calibrated_beta0 %||% 0
-    b0_label <- sprintf("Intercept (calibrated_beta0) [%s]", link)
+    b0 <- eq$intercept %||% 0
     if (length(b0) == 1) {
       items[[length(items) + 1]] <- numericInput(
-        intercept_input_id(target),
-        label = b0_label,
+        input_id(target, "int"),
+        label = sprintf("Intercept [%s]", link),
         value = as.numeric(b0),
         step = 0.001
       )
     } else {
+      items[[length(items) + 1]] <- h5("Intercept thresholds")
       for (j in seq_along(b0)) {
         items[[length(items) + 1]] <- numericInput(
-          paste0(intercept_input_id(target), "_", j),
-          label = sprintf("%s [%d]", b0_label, j),
+          input_id(target, paste0("int_", j)),
+          label = sprintf("Threshold %d [%s]", j, link),
           value = as.numeric(b0[j]),
           step = 0.001
         )
+      }
+    }
+
+    preds <- eq$predictors
+    if (length(preds) > 0) {
+      items[[length(items) + 1]] <- hr()
+      items[[length(items) + 1]] <- h4("Coefficients")
+      idx <- 1
+      for (p in preds) {
+        coef <- as.numeric(p$coefficient)
+        cats <- unlist(p$categories %||% list())
+
+        if (length(cats) > 0) {
+          items[[length(items) + 1]] <- h5(sprintf("%s (ref=%s)", p$column, p$reference %||% ""))
+          for (j in seq_along(coef)) {
+            items[[length(items) + 1]] <- numericInput(
+              input_id(target, paste0("coef_", idx)),
+              label = sprintf("  %s [%s]", cats[j], link),
+              value = coef[j],
+              step = 0.001
+            )
+            idx <- idx + 1
+          }
+        } else {
+          items[[length(items) + 1]] <- numericInput(
+            input_id(target, paste0("coef_", idx)),
+            label = sprintf("%s [%s]", p$column, link),
+            value = coef,
+            step = 0.001
+          )
+          idx <- idx + 1
+        }
       }
     }
 
@@ -299,42 +244,48 @@ server <- function(input, output, session) {
     for (i in seq_along(values$formulas$equations)) {
       if (values$formulas$equations[[i]]$target == target) {
         eq <- values$formulas$equations[[i]]
-        preds <- eq$predictors
 
-        idx <- 1
-        for (j in seq_along(preds)) {
-          p <- preds[[j]]
-          n_coef <- if (is.null(p$reference)) 1 else length(unlist(p$categories))
-          if (n_coef == 1) {
-            val <- input[[coef_input_id(target, idx)]]
-            if (!is.null(val)) preds[[j]]$coefficient <- val
-            idx <- idx + 1
-          } else {
-            new_coefs <- numeric(0)
-            for (k in seq_len(n_coef)) {
-              val <- input[[coef_input_id(target, idx)]]
-              if (!is.null(val)) new_coefs <- c(new_coefs, val)
-              idx <- idx + 1
-            }
-            if (length(new_coefs) == n_coef) preds[[j]]$coefficient <- new_coefs
-          }
+        r2_val <- input[[input_id(target, "r2")]]
+        if (!is.null(r2_val)) {
+          values$formulas$equations[[i]]$r2 <- r2_val
         }
-        values$formulas$equations[[i]]$predictors <- preds
 
-        b0_id <- intercept_input_id(target)
-        b0 <- eq$calibrated_beta0
+        b0 <- eq$intercept %||% 0
         if (length(b0) <= 1) {
-          val <- input[[b0_id]]
-          if (!is.null(val)) values$formulas$equations[[i]]$calibrated_beta0 <- val
+          val <- input[[input_id(target, "int")]]
+          if (!is.null(val)) values$formulas$equations[[i]]$intercept <- val
         } else {
           new_b0 <- numeric(0)
           for (j in seq_along(b0)) {
-            val <- input[[paste0(b0_id, "_", j)]]
+            val <- input[[input_id(target, paste0("int_", j))]]
             if (!is.null(val)) new_b0 <- c(new_b0, val)
           }
           if (length(new_b0) == length(b0)) {
-            values$formulas$equations[[i]]$calibrated_beta0 <- new_b0
+            values$formulas$equations[[i]]$intercept <- new_b0
           }
+        }
+
+        preds <- eq$predictors
+        if (length(preds) > 0) {
+          idx <- 1
+          for (j in seq_along(preds)) {
+            p <- preds[[j]]
+            n_coef <- if (is.null(p$reference)) 1 else length(unlist(p$categories))
+            if (n_coef == 1) {
+              val <- input[[input_id(target, paste0("coef_", idx))]]
+              if (!is.null(val)) preds[[j]]$coefficient <- val
+              idx <- idx + 1
+            } else {
+              new_coefs <- numeric(0)
+              for (k in seq_len(n_coef)) {
+                val <- input[[input_id(target, paste0("coef_", idx))]]
+                if (!is.null(val)) new_coefs <- c(new_coefs, val)
+                idx <- idx + 1
+              }
+              if (length(new_coefs) == n_coef) preds[[j]]$coefficient <- new_coefs
+            }
+          }
+          values$formulas$equations[[i]]$predictors <- preds
         }
 
         break

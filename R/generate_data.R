@@ -28,7 +28,7 @@ update_formula_coefficients <- function(formula_entry, calib_result) {
   }
 
   formula_entry$predictors <- predictors
-  formula_entry$calibrated_beta0 <- as.numeric(calib_result$beta0)
+  formula_entry$intercept <- as.numeric(calib_result$beta0)
   formula_entry
 }
 

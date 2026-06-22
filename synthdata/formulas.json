@@ -9,11 +9,12 @@
         "min": 12,
         "max": 50
       },
-      "r2": 0.35,
+      "r2": 0.45,
+      "intercept": 3.39671209992259,
       "predictors": [
         {
           "column": "socioeconomic_status",
-          "coefficient": [-0.119022229029228, -0.238044458058456],
+          "coefficient": [-0.128801959068917, -0.257603918137833],
           "reference": "Low",
           "categories": [
             "Medium",
@@ -22,7 +23,7 @@
         },
         {
           "column": "exercise_frequency",
-          "coefficient": [-0.079348152686152, -0.19837038171538, -0.357066687087684],
+          "coefficient": [-0.0858679727126111, -0.214669931781528, -0.38640587720675],
           "reference": "None",
           "categories": [
             "Light",
@@ -32,14 +33,13 @@
         },
         {
           "column": "family_history_hypertension",
-          "coefficient": 0.158696305372304,
+          "coefficient": 0.15,
           "reference": "No",
           "categories": [
             "Yes"
           ]
         }
-      ],
-      "calibrated_beta0": 3.36075435741917
+      ]
     },
     {
       "target": "smoking_status",
@@ -57,18 +57,24 @@
         ]
       },
       "r2": {},
+      "intercept": [
+        0.787897183083735,
+        0.554360570261787
+      ],
       "predictors": [
         {
           "column": "socioeconomic_status",
-          "coefficient": [-0.3, -0.6],
+          "coefficient": [
+            0.3,
+            -0.5
+          ],
           "reference": "Low",
           "categories": [
             "Medium",
             "High"
           ]
         }
-      ],
-      "calibrated_beta0": [1.28930497210694, 0.746549708791302]
+      ]
     },
     {
       "target": "exercise_frequency",
@@ -88,18 +94,25 @@
         ]
       },
       "r2": {},
+      "intercept": [
+        -0.153831429630578,
+        1.12357214615752,
+        2.734734491621
+      ],
       "predictors": [
         {
           "column": "socioeconomic_status",
-          "coefficient": [0.5, 1],
+          "coefficient": [
+            0.5,
+            1
+          ],
           "reference": "Low",
           "categories": [
             "Medium",
             "High"
           ]
         }
-      ],
-      "calibrated_beta0": [-0.167673204376709, 1.10723996730432, 2.71663605187695]
+      ]
     },
     {
       "target": "ldl_cholesterol",
@@ -111,22 +124,25 @@
         "max": 300
       },
       "r2": 0.4,
+      "intercept": 3.9974908676927,
       "predictors": [
         {
           "column": "body_mass_index",
-          "coefficient": 0.0276808585281695
+          "coefficient": 0.0316287830183819
         },
         {
           "column": "smoking_status",
-          "coefficient": [0.0922695284272315, 0.221446868225356],
+          "coefficient": [
+            0.10542927672794,
+            0.210858553455879
+          ],
           "reference": "Never",
           "categories": [
             "Former",
             "Current"
           ]
         }
-      ],
-      "calibrated_beta0": 4.14530933970556
+      ]
     },
     {
       "target": "diabetes_status",
@@ -144,13 +160,16 @@
         ]
       },
       "r2": {},
+      "intercept": [
+        0.536388377909005,
+        -2.8076505920631
+      ],
       "predictors": [
         {
           "column": "body_mass_index",
-          "coefficient": 0.01
+          "coefficient": 0.04
         }
-      ],
-      "calibrated_beta0": [1.60084163673765, -4.33177487140938]
+      ]
     },
     {
       "target": "alcohol_units_per_week",
@@ -162,18 +181,21 @@
         "max": 70
       },
       "r2": 0.15,
+      "intercept": 1.98676783355858,
       "predictors": [
         {
           "column": "socioeconomic_status",
-          "coefficient": [0.393634323259674, 0.984085808149184],
+          "coefficient": [
+            0.441379593923795,
+            0.882759187847589
+          ],
           "reference": "Low",
           "categories": [
             "Medium",
             "High"
           ]
         }
-      ],
-      "calibrated_beta0": 1.9667814803488
+      ]
     },
     {
       "target": "sodium_intake_mg",
@@ -185,18 +207,21 @@
         "max": 8000
       },
       "r2": 0.15,
+      "intercept": 3513.88516477708,
       "predictors": [
         {
           "column": "socioeconomic_status",
-          "coefficient": [-438.443850120785, -1096.10962530196],
+          "coefficient": [
+            -529.778520388738,
+            -1059.55704077748
+          ],
           "reference": "Low",
           "categories": [
             "Medium",
             "High"
           ]
         }
-      ],
-      "calibrated_beta0": 3460.36604262682
+      ]
     },
     {
       "target": "systolic_blood_pressure",
@@ -208,18 +233,22 @@
         "max": 220
       },
       "r2": 0.65,
+      "intercept": 32.9063190678312,
       "predictors": [
         {
           "column": "age",
-          "coefficient": 0.414367178545922
+          "coefficient": 0.510366520123309
         },
         {
           "column": "body_mass_index",
-          "coefficient": 1.10497914278912
+          "coefficient": 1.02073304024662
         },
         {
           "column": "smoking_status",
-          "coefficient": [2.07183589272961, 4.14367178545922],
+          "coefficient": [
+            2.04146608049323,
+            5.10366520123309
+          ],
           "reference": "Never",
           "categories": [
             "Former",
@@ -228,7 +257,11 @@
         },
         {
           "column": "exercise_frequency",
-          "coefficient": [-1.38122392848641, -3.45305982121601, -5.52489571394562],
+          "coefficient": [
+            -3.06219912073985,
+            -6.1243982414797,
+            -8.16586432197294
+          ],
           "reference": "None",
           "categories": [
             "Light",
@@ -238,11 +271,14 @@
         },
         {
           "column": "ldl_cholesterol",
-          "coefficient": 0.0552489571394562
+          "coefficient": 0.0510366520123309
         },
         {
           "column": "diabetes_status",
-          "coefficient": [5.52489571394562, 8.28734357091843],
+          "coefficient": [
+            5.10366520123309,
+            7.14513128172632
+          ],
           "reference": "None",
           "categories": [
             "Type_1",
@@ -251,11 +287,11 @@
         },
         {
           "column": "alcohol_units_per_week",
-          "coefficient": 0.207183589272961
+          "coefficient": 0.306219912073985
         },
         {
           "column": "family_history_hypertension",
-          "coefficient": 6.90611964243203,
+          "coefficient": 5.10366520123309,
           "reference": "No",
           "categories": [
             "Yes"
@@ -263,19 +299,21 @@
         },
         {
           "column": "sodium_intake_mg",
-          "coefficient": 0.00414367178545922
+          "coefficient": 0.00510366520123309
         },
         {
           "column": "socioeconomic_status",
-          "coefficient": [-2.07183589272961, -4.83428374970242],
+          "coefficient": [
+            -2.04146608049323,
+            -4.08293216098647
+          ],
           "reference": "Low",
           "categories": [
             "Medium",
             "High"
           ]
         }
-      ],
-      "calibrated_beta0": 37.4705317301147
+      ]
     }
   ]
 }

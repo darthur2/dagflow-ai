@@ -41,6 +41,7 @@ Each equation object has:
 - `distribution` — the distribution name from the distribution-selector output
 - `distribution_parameters` — the distribution parameters from the distribution-selector output (included as-is)
 - `r2` — the proportion of conditional variance in the response explained by its parents (between 0 and 1, or `null` for categorical targets)
+- `intercept` — the intercept on the link scale (scalar for continuous, array for categorical-nominal/ordinal targets)
 - `predictors` — an array of predictor objects
 
 ### Predictor objects
@@ -116,6 +117,7 @@ Always write the final JSON object to `synthdata/formulas.json` in the project r
       "distribution": "normal",
       "distribution_parameters": { "mean": 8000, "sd": 2000, "min": 500, "max": 15000 },
       "r2": 0.7,
+      "intercept": 8000,
       "predictors": [
         { "column": "fertilizer_amount", "coefficient": 8.0 },
         { "column": "rainfall", "coefficient": 2.5 },
