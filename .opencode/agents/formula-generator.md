@@ -65,7 +65,9 @@ Each equation object has:
 
 The consuming system will expand this into k-1 columns named `parent_name_category_value` with the corresponding coefficients.
 
-**Variables with no parents** (roots in the DAG) or only exogenous parents should NOT have an equation. Exogenous nodes from the DAG are also not targets.
+**Variables with no parents** (roots in the DAG) should NOT have an equation. Exogenous nodes from the DAG are also not targets.
+
+**Important**: Prior to this agent's invocation, the `@dag-creator` agent should have passed user-approved exogenous variables back to the `@variable-selector` and `@distribution-selector` agents. Therefore, variables that were originally exogenous in the DAG now have full variable metadata and distribution assignments. They will appear in the design matrix just like any other predictor variable. Treat them as ordinary predictor columns — include them in formulas for their endogenous children alongside any endogenous parents.
 
 ### Link function guidance
 

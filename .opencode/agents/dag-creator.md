@@ -80,7 +80,17 @@ dag <- jsonlite::fromJSON(paste(readLines("dag.json"), collapse = "\n"), simplif
 
 Validate that the DAG is still acyclic and contains all the expected nodes and edges.
 
-### Step 6: Iterate if needed
+### Step 6: Feed exogenous variables back through the pipeline
+
+If the user approved any exogenous variables, these variables have DAG parent/child relationships but currently lack variable metadata (type, bounds, categories) and distribution assignments. For the formula generator to create equations for their endogenous children, these exogenous variables must be routed through the pipeline first.
+
+Repeat the following for each approved exogenous variable:
+1. **`@variable-selector`** — Present the exogenous variable's `id` and `description` and ask the agent to produce a full variable definition (including `data_type`, `measurement_level`, `bounds` or `category_names`, etc.) that matches the variable's role as described in the DAG.
+2. **`@distribution-selector`** — The expanded variable list (original + exogenous variable definitions) is then passed to this agent to assign distributions to all variables, including the former exogenous ones.
+
+Only after the exogenous variables have been fully defined and assigned distributions should the `@formula-generator` agent be invoked. This ensures every endogenous variable has at least one observed parent with distributional information.
+
+### Step 7: Iterate if needed
 
 Ask the user if they are satisfied with the DAG or want to make further changes. If they want more changes, update the DAG JSON (by writing the updated `dag.json`) and re-launch the app for another review cycle. If they are satisfied, proceed to output the final DAG.
 

@@ -1,5 +1,21 @@
 [
   {
+    "name": "construction_era",
+    "distribution": "categorical-ordinal",
+    "distribution_parameters": {
+      "categories": ["Pre-1920", "1920-1949", "1950-1979", "1980-1999", "2000_Present"],
+      "probabilities": [0.05, 0.10, 0.25, 0.30, 0.30]
+    }
+  },
+  {
+    "name": "zoning_land_use_regulation",
+    "distribution": "categorical-ordinal",
+    "distribution_parameters": {
+      "categories": ["Very_Restrictive", "Restrictive", "Moderate", "Permissive", "Very_Permissive"],
+      "probabilities": [0.10, 0.20, 0.40, 0.20, 0.10]
+    }
+  },
+  {
     "name": "sale_price",
     "distribution": "lognormal",
     "distribution_parameters": {
