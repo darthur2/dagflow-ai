@@ -121,7 +121,7 @@ server <- function(input, output, session) {
       cv <- cat_vars()
       tagList(
         h5("Scatterplot"),
-        selectInput("scatter_y", "Y Variable", choices = qv, selected = qv[1]),
+        selectInput("scatter_x", "X Variable", choices = qv, selected = qv[1]),
         h5("Boxplot"),
         selectInput("box_group", "Group By", choices = cv, selected = cv[1])
       )
@@ -161,9 +161,9 @@ server <- function(input, output, session) {
   })
 
   output$scatter_plot <- renderPlot({
-    req(values$data, input$primary_var, input$scatter_y)
-    xvar <- input$primary_var
-    yvar <- input$scatter_y
+    req(values$data, input$primary_var, input$scatter_x)
+    xvar <- input$scatter_x
+    yvar <- input$primary_var
     ggplot(values$data, aes(x = .data[[xvar]], y = .data[[yvar]])) +
       geom_point(alpha = 0.6, color = "#2c7fb8") +
       geom_smooth(method = "lm", se = TRUE, color = "#d95f02", fill = "#d95f02", alpha = 0.2) +
