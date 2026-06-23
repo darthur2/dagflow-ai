@@ -134,7 +134,7 @@ Open a terminal in the project directory (the one containing the `Dockerfile`)
 and run:
 
 ```bash
-docker build -t dagflow .
+docker compose build
 ```
 
 This downloads the base image, installs R with the required packages, and
@@ -154,17 +154,21 @@ Contact your administrator or service provider to obtain one.
 ### 4. Run the pipeline
 
 ```bash
-docker run -it -p 3838:3838 -e SSEC_LITELLM_API_KEY=your_key_here dagflow
+SSEC_LITELLM_API_KEY=your_key_here docker compose run dagflow
 ```
 
 This starts the interactive AI pipeline. The AI will ask you what kind of
 dataset you want and guide you through the five stages.
 
+The `docker-compose.yml` automatically mounts the `synthdata/` directory so
+that all generated files (variables, DAG, formulas, and the final CSV) persist
+on your host machine — no extra flags needed.
+
 If you use a different provider, replace the environment variable accordingly:
 
 ```bash
-docker run -it -p 3838:3838 -e OPENAI_API_KEY=your_key_here dagflow
-docker run -it -p 3838:3838 -e ANTHROPIC_API_KEY=your_key_here dagflow
+OPENAI_API_KEY=your_key_here docker compose run dagflow
+ANTHROPIC_API_KEY=your_key_here docker compose run dagflow
 ```
 
 ---
@@ -174,12 +178,12 @@ docker run -it -p 3838:3838 -e ANTHROPIC_API_KEY=your_key_here dagflow
 When you run the container, you can specify a command:
 
 ```bash
-docker run -it -p 3838:3838 dagflow [command]
+SSEC_LITELLM_API_KEY=your_key_here docker compose run dagflow [command]
 ```
 
 | Command | What it does |
 |---------|-------------|
-| `opencode` | (default) Start the AI-assisted pipeline |
+| *(none)* | (default) Start the AI-assisted pipeline |
 | `generate 500` | Skip the AI pipeline. Generate 500 rows from existing configuration files in `synthdata/` |
 | `app variable` | Launch the Variable Editor Shiny app on port 3838 |
 | `app distribution` | Launch the Distribution Explorer Shiny app on port 3838 |
@@ -189,16 +193,19 @@ docker run -it -p 3838:3838 dagflow [command]
 | `test` | Run the R test suite |
 | `shell` | Get an interactive bash shell inside the container |
 
+All files written to `synthdata/` inside the container (including
+`generated_data.csv`) appear in the `synthdata/` folder on your host
+automatically — the volume mount in `docker-compose.yml` handles this.
+
 ### Using Shiny apps
 
 When you launch a Shiny app, the container starts an R web server on port 3838
 bound to `0.0.0.0` (all network interfaces), making it accessible outside
-the container. To view it in your browser, add **`-p 3838:3838`** to the
-`docker run` command — this maps the container's port 3838 to your machine's
-port 3838:
+the container. The port is already mapped in `docker-compose.yml`, so you just
+need **`--service-ports`** to activate it:
 
 ```bash
-docker run -it -p 3838:3838 -e SSEC_LITELLM_API_KEY=your_key_here dagflow app distribution
+SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow app distribution
 ```
 
 Then open `http://localhost:3838` in your browser.
@@ -260,6 +267,7 @@ plots. Useful for sanity-checking that the generated data looks realistic.
 ```
 .
 ├── Dockerfile              # Container definition
+├── docker-compose.yml      # Orchestration (volume mounts synthdata/ for persistence)
 ├── docker-entrypoint.sh    # What happens when the container starts
 ├── opencode.json           # OpenCode configuration (AI agents)
 ├── opencode-config.json    # API provider configuration
@@ -309,7 +317,7 @@ plots. Useful for sanity-checking that the generated data looks realistic.
 A: You can still use the data generation engine directly. Set up your
 configuration files using the Shiny apps, then run:
 ```bash
-docker run -it -p 3838:3838 dagflow generate 1000
+docker compose run dagflow generate 1000
 ```
 The apps do not need an API key. Only the AI-guided pipeline does.
 
@@ -323,18 +331,12 @@ Log out and back in for the change to take effect.
 
 **Q: How do I get my generated CSV file out of the container?**
 
-A: Use Docker volumes. Run:
-```bash
-docker run -it -p 3838:3838 -v /path/on/your/machine:/output -e SSEC_LITELLM_API_KEY=your_key_here dagflow generate 1000
-```
-Then copy the file:
-```bash
-docker cp <container_name>:/workspace/synthdata/generated_data.csv /path/on/your/machine/
-```
-Or use `--mount` for a cleaner volume mount:
-```bash
-docker run -it --mount type=bind,source=/path/on/your/machine,target=/output dagflow generate 1000
-```
+A: You don't need to — it's already there. The `docker-compose.yml` mounts
+the `synthdata/` folder directly, so everything written to that directory
+inside the container (variables, DAG, formulas, and `generated_data.csv`)
+appears in `./synthdata/` on your host machine as soon as the pipeline
+finishes. Just open `synthdata/generated_data.csv` in any spreadsheet or
+statistics software.
 
 **Q: How do I restart a specific stage without starting over?**
 

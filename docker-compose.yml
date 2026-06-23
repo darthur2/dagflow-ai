@@ -1,0 +1,15 @@
+services:
+  dagflow:
+    build: .
+    image: dagflow
+    stdin_open: true
+    tty: true
+    ports:
+      - "3838:3838"
+    volumes:
+      - ./synthdata:/workspace/synthdata
+    environment:
+      - SSEC_LITELLM_BASE_URL
+      - SSEC_LITELLM_API_KEY
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
