@@ -54,7 +54,7 @@ After the user has approved the exogenous variables, combine them with the endog
 Launch the Shiny app for the user to visually review and edit the DAG:
 
 ```bash
-Rscript -e "shiny::runApp('apps/dag_app.R')"
+nohup R -e "shiny::runApp('apps/dag_app.R', port=3838, launch.browser=FALSE)" > apps/shiny_app.log 2>&1 &
 ```
 
 Explain to the user that the app allows them to:

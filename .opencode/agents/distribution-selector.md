@@ -87,7 +87,7 @@ Every quantitative variable includes a `bounds` field. Include those values as `
 After the initial distribution run, launch the interactive visualization app with:
 
 ```bash
-Rscript -e "shiny::runApp('apps/distribution_app.R')"
+nohup R -e "shiny::runApp('apps/distribution_app.R', port=3838, launch.browser=FALSE)" > apps/shiny_app.log 2>&1 &
 ```
 
 The human may review and adjust parameters visually. When they click "Save Refined JSON", the app overwrites `synthdata/distributions.json` with the adjusted parameters.
