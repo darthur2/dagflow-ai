@@ -1,0 +1,7 @@
+.git
+.gitignore
+.opencode/node_modules/
+.opencode/package-lock.json
+docs/
+synthdata/
+AGENTS.md
