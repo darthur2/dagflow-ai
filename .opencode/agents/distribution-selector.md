@@ -83,18 +83,6 @@ Every quantitative variable includes a `bounds` field. Include those values as `
 | negative binomial | `size`, `mu`, `min`, `max` |
 | poisson | `lambda`, `min`, `max` |
 
-## Human-in-the-loop refinement
-
-After the initial distribution run, launch the interactive visualization app with:
-
-```bash
-nohup R -e "shiny::runApp('apps/distribution_app.R', port=3838, host='0.0.0.0', launch.browser=FALSE)" > apps/shiny_app.log 2>&1 &
-```
-
-The human may review and adjust parameters visually. When they click "Save Refined JSON", the app overwrites `synthdata/distributions.json` with the adjusted parameters.
-
-On subsequent runs, `synthdata/distributions.json` already contains the human-refined parameters, so you can validate them as-is.
-
 ## File output
 
 Always write the final JSON array to `synthdata/distributions.json` in the project root using the `write` tool. This file is consumed by the interactive visualization app and downstream agents.

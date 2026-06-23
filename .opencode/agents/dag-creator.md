@@ -50,34 +50,7 @@ After the user has approved the exogenous variables, combine them with the endog
 }
 ```
 
-### Step 4: Launch the interactive DAG app
-
-Launch the Shiny app for the user to visually review and edit the DAG:
-
-```bash
-nohup R -e "shiny::runApp('apps/dag_app.R', port=3838, host='0.0.0.0', launch.browser=FALSE)" > apps/shiny_app.log 2>&1 &
-```
-
-Explain to the user that the app allows them to:
-- View the DAG as an interactive plot (draggable nodes, zoom, pan)
-- Toggle each exogenous variable on/off with checkboxes
-- Add or remove edges using the dropdown controls
-- Add or remove nodes (endogenous or exogenous)
-- Save their refined DAG back to `synthdata/dag.json` with the "Save DAG" button
-
-Tell the user to click "Load from synthdata/dag.json" in the app, make their edits, then click "Save DAG" when done.
-
-### Step 5: Re-read the refined DAG
-
-After the user confirms they have saved, read the refined DAG from `synthdata/dag.json`:
-
-```r
-dag <- jsonlite::fromJSON(paste(readLines("synthdata/dag.json"), collapse = "\n"), simplifyVector = FALSE)
-```
-
-Validate that the DAG is still acyclic and contains all the expected nodes and edges.
-
-### Step 6: Feed exogenous variables back through the pipeline
+### Step 4: Feed exogenous variables back through the pipeline
 
 If the user approved any exogenous variables, these variables have DAG parent/child relationships but currently lack variable metadata (type, bounds, categories) and distribution assignments. For the formula generator to create equations for their endogenous children, these exogenous variables must be routed through the pipeline first.
 
@@ -87,9 +60,7 @@ Repeat the following for each approved exogenous variable:
 
 Only after the exogenous variables have been fully defined and assigned distributions should the `@formula-generator` agent be invoked. This ensures every endogenous variable has at least one observed parent with distributional information.
 
-### Step 7: Iterate if needed
-
-Ask the user if they are satisfied with the DAG or want to make further changes. If they want more changes, update the DAG JSON (by writing the updated `synthdata/dag.json`) and re-launch the app for another review cycle. If they are satisfied, proceed to output the final DAG.
+After completing the steps above, output the final DAG. The orchestrator will handle any further iteration with the user.
 
 ## Output format — STRICT
 

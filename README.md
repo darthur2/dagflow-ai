@@ -94,6 +94,32 @@ If you do not have Docker yet:
 - **Linux**: Use your package manager (`sudo apt install docker.io` on Ubuntu,
   then `sudo systemctl start docker`)
 
+**Windows users — use WSL2, not PowerShell**
+
+Docker Desktop on Windows requires WSL2. All commands in this guide must be
+run from a **WSL2 Linux terminal** (e.g., Ubuntu), not PowerShell or CMD.
+PowerShell has different quoting and path rules that will break them.
+
+If you don't have WSL2 yet, open **PowerShell as Administrator** and run:
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+Restart your machine, launch "Ubuntu" from the Start menu, and create your
+Linux user.
+
+Clone or copy the project into your **WSL home directory** (`/home/yourname/`),
+not onto `C:\`. Files on the Windows filesystem are slow under WSL and can
+cause permission issues with Docker.
+
+```bash
+# In your WSL Ubuntu terminal:
+cd ~
+git clone <repo-url> dagflow
+cd dagflow
+```
+
 After installing, open a terminal and verify it works:
 
 ```bash
@@ -128,7 +154,7 @@ Contact your administrator or service provider to obtain one.
 ### 4. Run the pipeline
 
 ```bash
-docker run -it -e SSEC_LITELLM_API_KEY=your_key_here dagflow
+docker run -it -p 3838:3838 -e SSEC_LITELLM_API_KEY=your_key_here dagflow
 ```
 
 This starts the interactive AI pipeline. The AI will ask you what kind of
@@ -137,8 +163,8 @@ dataset you want and guide you through the five stages.
 If you use a different provider, replace the environment variable accordingly:
 
 ```bash
-docker run -it -e OPENAI_API_KEY=your_key_here dagflow
-docker run -it -e ANTHROPIC_API_KEY=your_key_here dagflow
+docker run -it -p 3838:3838 -e OPENAI_API_KEY=your_key_here dagflow
+docker run -it -p 3838:3838 -e ANTHROPIC_API_KEY=your_key_here dagflow
 ```
 
 ---
@@ -148,7 +174,7 @@ docker run -it -e ANTHROPIC_API_KEY=your_key_here dagflow
 When you run the container, you can specify a command:
 
 ```bash
-docker run -it dagflow [command]
+docker run -it -p 3838:3838 dagflow [command]
 ```
 
 | Command | What it does |
@@ -165,14 +191,24 @@ docker run -it dagflow [command]
 
 ### Using Shiny apps
 
-When you launch a Shiny app, the container starts an R web server on port 3838.
-To view it in your browser, add `-p 3838:3838` to the `docker run` command:
+When you launch a Shiny app, the container starts an R web server on port 3838
+bound to `0.0.0.0` (all network interfaces), making it accessible outside
+the container. To view it in your browser, add **`-p 3838:3838`** to the
+`docker run` command — this maps the container's port 3838 to your machine's
+port 3838:
 
 ```bash
 docker run -it -p 3838:3838 -e SSEC_LITELLM_API_KEY=your_key_here dagflow app distribution
 ```
 
 Then open `http://localhost:3838` in your browser.
+
+**Windows (WSL2):** If `localhost:3838` doesn't connect, WSL2 may need a
+port proxy rule. In **PowerShell as Administrator**, run:
+
+```powershell
+netsh interface portproxy add v4tov4 listenport=3838 listenaddress=0.0.0.0 connectport=3838 connectaddress=127.0.0.1
+```
 
 ---
 
@@ -289,7 +325,7 @@ Log out and back in for the change to take effect.
 
 A: Use Docker volumes. Run:
 ```bash
-docker run -it -v /path/on/your/machine:/output -e SSEC_LITELLM_API_KEY=your_key_here dagflow generate 1000
+docker run -it -p 3838:3838 -v /path/on/your/machine:/output -e SSEC_LITELLM_API_KEY=your_key_here dagflow generate 1000
 ```
 Then copy the file:
 ```bash

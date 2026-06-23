@@ -133,6 +133,8 @@ When the user asks you to launch an app, use `nohup` to keep it alive after the 
 nohup R -e "shiny::runApp('apps/APP_NAME.R', port=3838, host='0.0.0.0', launch.browser=FALSE)" > apps/shiny_app.log 2>&1 &
 ```
 
+After launching, tell the user: *"Open http://localhost:3838 in your browser to use the app."*
+
 When the user asks you to close the app:
 ```bash
 pkill -f "APP_NAME.R" 2>/dev/null; echo "App closed"
