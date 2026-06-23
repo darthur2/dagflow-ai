@@ -1,5 +1,7 @@
 ---
 description: Designs variable lists for synthetic dataset generation
+model: gemma-4-31b
+provider: ssec-litellm
 mode: subagent
 permission:
   read: allow
