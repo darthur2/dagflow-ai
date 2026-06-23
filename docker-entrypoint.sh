@@ -47,9 +47,9 @@ case "${1:-opencode}" in
     ;;
   *)
     cat <<USAGE
-SynthFlow — Synthetic Dataset Generator
+DagFlow — AI Workflow Engine
 
-Usage: docker run [OPTIONS] synthflow [COMMAND]
+Usage: docker run [OPTIONS] dagflow [COMMAND]
 
 Commands:
   opencode              Run OpenCode CLI interactively (default)
