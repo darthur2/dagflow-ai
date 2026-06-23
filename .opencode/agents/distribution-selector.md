@@ -1,7 +1,6 @@
 ---
 description: Selects probability distributions for synthetic dataset variables
-model: gemma-4-31b
-provider: ssec-litellm
+model: ssec-litellm/gemma-4-31b
 mode: subagent
 permission:
   read: allow
