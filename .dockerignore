@@ -4,5 +4,4 @@
 .opencode/package-lock.json
 docs/
 tests/
-synthdata/
 AGENTS.md

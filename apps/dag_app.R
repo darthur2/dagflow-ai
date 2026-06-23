@@ -5,10 +5,10 @@ library(jsonlite)
 find_project_root <- function() {
   d <- getwd()
   while (d != dirname(d)) {
-    if (dir.exists(file.path(d, "synthdata"))) return(d)
+    if (dir.exists(file.path(d, "synthdata")) || dir.exists(file.path(d, "R"))) return(d)
     d <- dirname(d)
   }
-  stop("Cannot find project root (synthdata/ not found)")
+  getwd()
 }
 
 root <- find_project_root()

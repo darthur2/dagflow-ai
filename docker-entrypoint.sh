@@ -55,8 +55,14 @@ Commands:
   opencode              Run OpenCode CLI interactively (default)
   generate [n]          Generate dataset with n rows (default 1000)
   app <name>            Launch Shiny app (variable|distribution|dag|formula|data_viz)
+                        (add -p 3838:3838 to docker run to access in your browser)
   test                  Run R test suite
   shell                 Interactive bash shell
+
+Persistence:
+  Data files in synthdata/ persist only within one container run.
+  Use -v or --mount to share synthdata/ between commands:
+    docker run -it -v dagflow-data:/workspace/synthdata ... dagflow
 
 Required env vars (at least one):
   SSEC_LITELLM_API_KEY   API key for ssec-litellm (gemma-4-31b)
