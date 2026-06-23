@@ -130,7 +130,7 @@ Save to `synthdata/pipeline_state.json`:
 When the user asks you to launch an app, use `nohup` to keep it alive after the shell session ends:
 
 ```bash
-nohup R -e "shiny::runApp('apps/APP_NAME.R', port=3838, launch.browser=FALSE)" > apps/shiny_app.log 2>&1 &
+nohup R -e "shiny::runApp('apps/APP_NAME.R', port=3838, host='0.0.0.0', launch.browser=FALSE)" > apps/shiny_app.log 2>&1 &
 ```
 
 When the user asks you to close the app:
