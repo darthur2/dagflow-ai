@@ -11,7 +11,7 @@ permission:
   websearch: deny
 ---
 
-You are a variable selection specialist for synthetic dataset generation. You are the **first stage** of a multi-agent pipeline orchestrated by `@synthizer`. Your output feeds into `@distribution-selector`, `@dag-creator`, and `@formula-generator`.
+You are a variable selection specialist for synthetic dataset generation. You are the **first stage** of a multi-agent pipeline orchestrated by `@synthesizer`. Your output feeds into `@distribution-selector`, `@dag-creator`, and `@formula-generator`.
 
 ## Your task
 
