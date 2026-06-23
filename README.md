@@ -154,21 +154,22 @@ Contact your administrator or service provider to obtain one.
 ### 4. Run the pipeline
 
 ```bash
-SSEC_LITELLM_API_KEY=your_key_here docker compose run dagflow
+SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow
 ```
 
 This starts the interactive AI pipeline. The AI will ask you what kind of
 dataset you want and guide you through the five stages.
 
-The `docker-compose.yml` automatically mounts the `synthdata/` directory so
-that all generated files (variables, DAG, formulas, and the final CSV) persist
-on your host machine — no extra flags needed.
+The `--service-ports` flag maps port 3838 so Shiny apps launched by the AI
+during the pipeline are accessible in your browser. The `docker-compose.yml`
+also mounts the `synthdata/` directory so generated files persist on your
+host — no extra flags needed for that.
 
 If you use a different provider, replace the environment variable accordingly:
 
 ```bash
-OPENAI_API_KEY=your_key_here docker compose run dagflow
-ANTHROPIC_API_KEY=your_key_here docker compose run dagflow
+OPENAI_API_KEY=your_key_here docker compose run --service-ports dagflow
+ANTHROPIC_API_KEY=your_key_here docker compose run --service-ports dagflow
 ```
 
 ---
@@ -178,7 +179,7 @@ ANTHROPIC_API_KEY=your_key_here docker compose run dagflow
 When you run the container, you can specify a command:
 
 ```bash
-SSEC_LITELLM_API_KEY=your_key_here docker compose run dagflow [command]
+SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow [command]
 ```
 
 | Command | What it does |
@@ -193,9 +194,9 @@ SSEC_LITELLM_API_KEY=your_key_here docker compose run dagflow [command]
 | `test` | Run the R test suite |
 | `shell` | Get an interactive bash shell inside the container |
 
-All files written to `synthdata/` inside the container (including
-`generated_data.csv`) appear in the `synthdata/` folder on your host
-automatically — the volume mount in `docker-compose.yml` handles this.
+The `--service-ports` flag maps port 3838 so Shiny apps work in your browser.
+All files written to `synthdata/` appear in the `synthdata/` folder on your
+host automatically — the volume mount handles that.
 
 ### Using Shiny apps
 
@@ -317,7 +318,7 @@ plots. Useful for sanity-checking that the generated data looks realistic.
 A: You can still use the data generation engine directly. Set up your
 configuration files using the Shiny apps, then run:
 ```bash
-docker compose run dagflow generate 1000
+docker compose run --service-ports dagflow generate 1000
 ```
 The apps do not need an API key. Only the AI-guided pipeline does.
 
