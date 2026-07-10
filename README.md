@@ -106,8 +106,14 @@ If you don't have WSL2 yet, open **PowerShell as Administrator** and run:
 wsl --install -d Ubuntu
 ```
 
-Restart your machine, launch "Ubuntu" from the Start menu, and create your
-Linux user.
+When the installation finishes, the Ubuntu terminal will open and
+prompt you to create a username and password.
+
+After WSL and Ubuntu are ready, open **Docker Desktop**, go to
+**Settings → Resources → WSL Integration**, enable **"Enable integration
+with my default WSL distro"**, then toggle the switch for **Ubuntu** to
+"On". Click "Apply & Restart". Without this step, `docker` commands from
+WSL will fail with connection errors.
 
 Clone or copy the project into your **WSL home directory** (`/home/yourname/`),
 not onto `C:\`. Files on the Windows filesystem are slow under WSL and can
@@ -116,9 +122,16 @@ cause permission issues with Docker.
 ```bash
 # In your WSL Ubuntu terminal:
 cd ~
+pwd                  # should show /home/your_username (not /root/)
 git clone <repo-url> dagflow
 cd dagflow
 ```
+
+> **Permission note:** If you cloned the repo before creating your WSL user
+> (e.g., you were logged in as root), your WSL home may be `/root/` instead
+> of `/home/yourname/`. Exit the WSL window, relaunch "Ubuntu", let it
+> finish user creation, then clone again. Files in `/root/` can cause
+> permission errors with Docker volume mounts.
 
 After installing, open a terminal and verify it works:
 
@@ -141,11 +154,14 @@ This downloads the base image, installs R with the required packages, and
 copies all the project files into the image. It takes a few minutes the first
 time; subsequent builds are faster.
 
-### 3. Get an API key
+### 3. (Optional) Get API keys for non-default models
 
-The AI agents need access to a large language model. You need at least one of:
+The default model (`opencode/deepseek-v4-flash-free`) is free and requires
+no API key. You can run the pipeline without any keys.
 
-- An **SSEC LiteLLM API key** (for the default model, Gemma 4)
+If you want to use a different model, you'll need an API key for its provider:
+
+- An **SSEC LiteLLM API key** (for Gemma 4, GPT-5 Mini, etc.)
 - An **OpenAI API key** (for GPT models)
 - An **Anthropic API key** (for Claude models)
 
@@ -153,8 +169,10 @@ Contact your administrator or service provider to obtain one.
 
 ### 4. Run the pipeline
 
+The default model is `opencode/deepseek-v4-flash-free` — free and requires no API key.
+
 ```bash
-SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow
+docker compose run --service-ports dagflow
 ```
 
 This starts the interactive AI pipeline. The AI will ask you what kind of
@@ -165,11 +183,17 @@ during the pipeline are accessible in your browser. The `docker-compose.yml`
 also mounts the `synthdata/` directory so generated files persist on your
 host — no extra flags needed for that.
 
-If you use a different provider, replace the environment variable accordingly:
+To use a **different model**, set `AGENT_MODEL` alongside the matching API key:
 
 ```bash
-OPENAI_API_KEY=your_key_here docker compose run --service-ports dagflow
-ANTHROPIC_API_KEY=your_key_here docker compose run --service-ports dagflow
+# Gemma 4 via ssec-litellm
+AGENT_MODEL=ssec-litellm/gemma-4-31b SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow
+
+# GPT-5.4 Nano via OpenAI
+AGENT_MODEL=openai/gpt-5.4-nano OPENAI_API_KEY=your_key_here docker compose run --service-ports dagflow
+
+# Claude via Anthropic
+AGENT_MODEL=anthropic/claude-sonnet-4-20250514 ANTHROPIC_API_KEY=your_key_here docker compose run --service-ports dagflow
 ```
 
 ---
@@ -179,7 +203,13 @@ ANTHROPIC_API_KEY=your_key_here docker compose run --service-ports dagflow
 When you run the container, you can specify a command:
 
 ```bash
-SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow [command]
+docker compose run --service-ports dagflow [command]
+```
+
+Set `AGENT_MODEL` to choose a non-default model for the AI subagents:
+
+```bash
+AGENT_MODEL=ssec-litellm/gemma-4-31b SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow [command]
 ```
 
 | Command | What it does |
@@ -206,7 +236,7 @@ the container. The port is already mapped in `docker-compose.yml`, so you just
 need **`--service-ports`** to activate it:
 
 ```bash
-SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow app distribution
+docker compose run --service-ports dagflow app distribution
 ```
 
 Then open `http://localhost:3838` in your browser.

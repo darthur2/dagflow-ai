@@ -67,14 +67,14 @@ Persistence:
   Use -v or --mount to share synthdata/ between commands:
     docker run -it -v dagflow-data:/workspace/synthdata ... dagflow
 
-Required env vars (at least one):
-  SSEC_LITELLM_API_KEY   API key for ssec-litellm (gemma-4-31b)
+No env vars required by default (uses the free `opencode/deepseek-v4-flash-free` model).
+
+Optional env vars:
+  AGENT_MODEL            Override default model for all subagents (e.g., ssec-litellm/gemma-4-31b)
+  SSEC_LITELLM_BASE_URL  Override default ssec-litellm base URL
+  SSEC_LITELLM_API_KEY   API key for ssec-litellm (required when using an ssec-litellm model)
   OPENAI_API_KEY         API key for OpenAI
   ANTHROPIC_API_KEY      API key for Anthropic
-
-Optional:
-  SSEC_LITELLM_BASE_URL  Override default ssec-litellm base URL
-  AGENT_MODEL            Override default model for all subagents (e.g., ssec-litellm/gpt-5-mini)
 USAGE
     ;;
 esac

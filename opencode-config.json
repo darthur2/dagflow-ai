@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "ssec-litellm/gemma-4-31b",
+  "model": "opencode/deepseek-v4-flash-free",
   "provider": {
     "ssec-litellm": {
       "npm": "@ai-sdk/openai-compatible",
