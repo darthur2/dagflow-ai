@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "model": "ssec-litellm/gemma-4-31b",
   "provider": {
     "ssec-litellm": {
       "npm": "@ai-sdk/openai-compatible",
@@ -16,7 +17,8 @@
       "npm": "@ai-sdk/openai",
       "name": "OpenAI",
       "models": {
-        "gpt-4o": {}
+        "gpt-4o": {},
+        "gpt-5.4-nano": {}
       }
     },
     "anthropic": {

@@ -10,6 +10,9 @@ if [ ! -f "$CONFIG_DIR/opencode.json" ]; then
   if [ -n "$SSEC_LITELLM_BASE_URL" ]; then
     sed -i "s|\"baseURL\": \".*\"|\"baseURL\": \"${SSEC_LITELLM_BASE_URL}\"|" "$CONFIG_DIR/opencode.json"
   fi
+  if [ -n "$AGENT_MODEL" ]; then
+    sed -i "s|\"model\": \".*\"|\"model\": \"${AGENT_MODEL}\"|" "$CONFIG_DIR/opencode.json"
+  fi
 fi
 
 if [ -n "$SSEC_LITELLM_API_KEY" ]; then
@@ -71,6 +74,7 @@ Required env vars (at least one):
 
 Optional:
   SSEC_LITELLM_BASE_URL  Override default ssec-litellm base URL
+  AGENT_MODEL            Override default model for all subagents (e.g., ssec-litellm/gpt-5-mini)
 USAGE
     ;;
 esac

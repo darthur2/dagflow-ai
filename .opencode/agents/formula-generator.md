@@ -1,6 +1,5 @@
 ---
 description: Generates linear predictor formulas for synthetic dataset variables
-model: ssec-litellm/gemma-4-31b
 mode: subagent
 permission:
   read: allow

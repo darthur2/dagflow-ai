@@ -1,6 +1,5 @@
 ---
 description: Orchestrates the synthetic dataset generation pipeline end-to-end
-model: ssec-litellm/gemma-4-31b
 mode: primary
 permission:
   read: allow

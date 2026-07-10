@@ -9,6 +9,7 @@ services:
     volumes:
       - ./synthdata:/workspace/synthdata
     environment:
+      - AGENT_MODEL
       - SSEC_LITELLM_BASE_URL
       - SSEC_LITELLM_API_KEY
       - OPENAI_API_KEY
