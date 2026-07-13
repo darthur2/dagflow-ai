@@ -117,8 +117,17 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
 1. Follow the **Gate Protocol**: verify `gates.distributions.status` is `"ready"` before invoking
 2. Call `@distribution-selector` via the `task` tool, telling it to read `synthdata/variables.json`
 3. Read the result from `synthdata/distributions.json`
-4. In **auto mode**: set `gates.distributions.status` to `"approved"`, next gate to `"ready"`, proceed
-5. In **interactive mode**: follow the **Gate Protocol** — show a summary, ask for feedback/app/continue. Use `apps/distribution_app.R` for the app launch.
+4. **Run validation** — call `@distribution-validator` via the `task` tool to validate the distribution assignments
+5. Read the validation result from `synthdata/distribution_validation_result.json`
+6. **Validation loop** (cap retries at 3):
+   a. If `valid` is `false`:
+      - Print the errors to the user
+      - Re-invoke `@distribution-selector` with the explicit message:
+        *"Validation failed with these errors: [full error list]. Fix each issue and regenerate."*
+      - Loop back to step 3
+   b. If `valid` is `true` — proceed to the Gate Protocol
+7. In **auto mode**: set `gates.distributions.status` to `"approved"`, next gate to `"ready"`, proceed
+8. In **interactive mode**: follow the **Gate Protocol** — show a summary, ask for feedback/app/continue. Use `apps/distribution_app.R` for the app launch.
 
 ### Stage 3: DAG
 
