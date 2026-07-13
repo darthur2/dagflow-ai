@@ -137,8 +137,17 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
 4. If new exogenous variables are approved by the user:
    a. The dag-creator will route them through `@variable-selector` and `@distribution-selector`  
    b. After this completes, confirm the updated files are in place
-5. In **auto mode**: set `gates.dag.status` to `"approved"`, next gate to `"ready"`, proceed
-6. In **interactive mode**: follow the **Gate Protocol** — show a summary (nodes, edges), ask for feedback/app/continue. Use `apps/dag_app.R` for the app launch.
+5. **Run validation** — call `@dag-validator` via the `task` tool to validate the DAG structure
+6. Read the validation result from `synthdata/dag_validation_result.json`
+7. **Validation loop** (cap retries at 3):
+   a. If `valid` is `false`:
+      - Print the errors to the user
+      - Re-invoke `@dag-creator` with the explicit message:
+        *"Validation failed with these errors: [full error list]. Fix each issue and regenerate the DAG."*
+      - Loop back to step 3
+   b. If `valid` is `true` — proceed to the Gate Protocol
+8. In **auto mode**: set `gates.dag.status` to `"approved"`, next gate to `"ready"`, proceed
+9. In **interactive mode**: follow the **Gate Protocol** — show a summary (nodes, edges), ask for feedback/app/continue. Use `apps/dag_app.R` for the app launch.
 
 ### Stage 4: Formulas
 
