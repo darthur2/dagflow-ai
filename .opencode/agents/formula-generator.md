@@ -108,9 +108,11 @@ Always write the final JSON object to `synthdata/formulas.json` in the project r
 
 ### Example
 
-**Input DAG edges:** `fertilizer_amount → crop_yield`, `rainfall → crop_yield`, `soil_type → crop_yield`, `average_temperature → crop_yield`
+**Input DAG edges:** `fertilizer_amount → crop_yield`, `rainfall → crop_yield`, `soil_type → crop_yield`, `average_temperature → crop_yield`, `soil_type → crop_type`
 
-**Input distribution for `crop_yield`:** normal (identity link)
+**Input distributions:**
+- `crop_yield`: normal (identity link)
+- `crop_type`: categorical-nominal (multinomial logit link)
 
 ```json
 {
@@ -127,7 +129,30 @@ Always write the final JSON object to `synthdata/formulas.json` in the project r
         { "column": "average_temperature", "coefficient": 120.0 },
         { "column": "soil_type", "coefficient": [500, -300, 200], "reference": "Clay", "categories": ["Loam", "Sandy", "Silt"] }
       ]
+    },
+    {
+      "target": "crop_type",
+      "distribution": "categorical-nominal",
+      "distribution_parameters": {
+        "categories": ["Wheat", "Corn", "Soy"],
+        "probabilities": [0.4, 0.35, 0.25]
+      },
+      "r2": null,
+      "intercept": [0.0, 0.3],
+      "predictors": [
+        { "column": "soil_type", "coefficient": [0.3, 0.1, -0.1, 0.2], "reference": "Clay", "categories": ["Loam", "Sandy"] }
+      ]
     }
   ]
 }
 ```
+
+For a categorical-nominal target with K categories:
+- `r2` must be `null`
+- `intercept` is an array of length **K-1** (one log-odds per non-reference category)
+- Each continuous predictor coefficient is an array of length **K-1**
+- Each categorical predictor (M categories) coefficient is an array of length **(K-1) × (M-1)** — one block of K-1 values per dummy column
+
+In this example, `crop_type` has K=3 categories, so:
+- `intercept` length is 2
+- `soil_type` has M=3 categories (M-1=2 dummies), so its coefficient array length is (K-1) × (M-1) = 2 × 2 = 4

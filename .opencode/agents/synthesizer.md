@@ -167,18 +167,17 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
 
 3. Read the result from `synthdata/formulas.json`
 
-4. **Post-formula validation (run this before showing the user):**
-   a. Read `synthdata/dag.json` — find all endogenous nodes with >= 1 incoming edge
-   b. Read `synthdata/formulas.json` — collect all `target` values
-   c. If any endogenous node with parents is MISSING from the equations:
-      - Print the missing targets
+4. **Run full validation** — call `@formula-validator` via the `task` tool to validate the formulas against the DAG, variables, and distributions
+5. Read the validation result from `synthdata/formula_validation_result.json`
+6. **Validation loop** (cap retries at 3):
+   a. If `valid` is `false`:
+      - Print the errors to the user
       - Re-invoke `@formula-generator` with the explicit message:
-        *"These targets are still missing equations: [list]. Generate formulas for them."*
+        *"Validation failed with these errors: [full error list]. Fix each issue and regenerate formulas."*
       - Loop back to step 3
-   d. If all are present — proceed
-
-5. In **auto mode**: set `gates.formulas.status` to `"approved"`, next gate to `"ready"`, proceed
-6. In **interactive mode**: follow the **Gate Protocol** — show a summary (targets, distributions, predictor counts), ask for feedback/app/continue. Use `apps/formula_app.R` for the app launch.
+   b. If `valid` is `true` — proceed to the Gate Protocol
+7. In **auto mode**: set `gates.formulas.status` to `"approved"`, next gate to `"ready"`, proceed
+8. In **interactive mode**: follow the **Gate Protocol** — show a summary (targets, distributions, predictor counts), ask for feedback/app/continue. Use `apps/formula_app.R` for the app launch.
 
 ### Stage 5: Generation
 
