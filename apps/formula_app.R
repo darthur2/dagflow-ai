@@ -82,13 +82,6 @@ format_formula_string <- function(eq) {
   sprintf("%s ~ %s\n  + %s", lhs, paste(int, collapse = ", "), rhs)
 }
 
-format_dist_summary <- function(eq) {
-  dist <- eq$distribution
-  params <- eq$distribution_parameters
-  parts <- sprintf("%s: %s", names(params), unlist(params))
-  paste(c(dist, parts), collapse = "\n")
-}
-
 input_id <- function(target, suffix) {
   paste0("f_", gsub("[^a-zA-Z0-9]", "_", target), "_", suffix)
 }
@@ -103,10 +96,6 @@ ui <- fluidPage(
                    class = "btn-primary", style = "width: 100%;"),
       br(), br(),
       selectInput("eq_select", "Select Target Variable", choices = NULL),
-      hr(),
-      h4("Distribution"),
-      verbatimTextOutput("dist_summary"),
-      hr(),
       h4("Parameters"),
       uiOutput("param_editors"),
       br(),
@@ -149,11 +138,6 @@ server <- function(input, output, session) {
       if (eq$target == target) return(eq)
     }
     NULL
-  })
-
-  output$dist_summary <- renderText({
-    req(current_eq())
-    format_dist_summary(current_eq())
   })
 
   output$formula_display <- renderText({

@@ -207,7 +207,12 @@ After launching, tell the user: *"Open http://localhost:3838 in your browser to 
 
 When the user asks you to close the app:
 ```bash
-pkill -f "APP_NAME.R" 2>/dev/null; echo "App closed"
+if lsof -ti :3838 > /dev/null 2>&1; then
+  kill $(lsof -ti :3838) 2>/dev/null
+  echo "App on port 3838 closed"
+else
+  echo "No app running on port 3838"
+fi
 ```
 
 ## General rules
