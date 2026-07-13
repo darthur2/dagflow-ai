@@ -106,13 +106,13 @@ Coefficients must be on the link scale implied by the target's distribution, so 
 
 Always write the final JSON object to `synthdata/formulas.json` in the project root using the `write` tool.
 
-### Example
+### Examples
 
-**Input DAG edges:** `fertilizer_amount → crop_yield`, `rainfall → crop_yield`, `soil_type → crop_yield`, `average_temperature → crop_yield`, `soil_type → crop_type`
+#### 1. Quantitative target
 
-**Input distributions:**
-- `crop_yield`: normal (identity link)
-- `crop_type`: categorical-nominal (multinomial logit link)
+**Input DAG edges:** `fertilizer_amount → crop_yield`, `rainfall → crop_yield`, `soil_type → crop_yield`, `average_temperature → crop_yield`
+
+**Input distribution:** `crop_yield`: normal (identity link)
 
 ```json
 {
@@ -129,7 +129,25 @@ Always write the final JSON object to `synthdata/formulas.json` in the project r
         { "column": "average_temperature", "coefficient": 120.0 },
         { "column": "soil_type", "coefficient": [500, -300, 200], "reference": "Clay", "categories": ["Loam", "Sandy", "Silt"] }
       ]
-    },
+    }
+  ]
+}
+```
+
+`crop_yield` is quantitative, so:
+- `intercept` is a scalar (1)
+- Continuous predictors (`fertilizer_amount`, `rainfall`, `average_temperature`) have scalar coefficients
+- `soil_type` has M=4 total categories (M-1=3 non-reference dummies: Loam, Sandy, Silt), so its coefficient array length is M-1 = 3
+
+#### 2. Categorical-nominal target
+
+**Input DAG edges:** `soil_type → crop_type`
+
+**Input distribution:** `crop_type`: categorical-nominal (multinomial logit link)
+
+```json
+{
+  "equations": [
     {
       "target": "crop_type",
       "distribution": "categorical-nominal",
@@ -147,12 +165,50 @@ Always write the final JSON object to `synthdata/formulas.json` in the project r
 }
 ```
 
-For a categorical-nominal target with K categories:
-- `r2` must be `null`
-- `intercept` is an array of length **K-1** (one log-odds per non-reference category)
-- Each continuous predictor coefficient is an array of length **K-1**
-- Each categorical predictor (M categories) coefficient is an array of length **(K-1) × (M-1)** — one block of K-1 values per dummy column
-
-In this example, `crop_type` has K=3 categories, so:
-- `intercept` length is 2
+`crop_type` has K=3 categories, so:
+- `r2` is `null`
+- `intercept` is an array of length K-1 = 2
 - `soil_type` has M=3 categories (M-1=2 dummies), so its coefficient array length is (K-1) × (M-1) = 2 × 2 = 4
+
+#### 3. Categorical-ordinal target
+
+**Input DAG edges:** `humidity → pest_severity`, `soil_type → pest_severity`
+
+**Input distribution:** `pest_severity`: categorical-ordinal (cumulative logit link)
+
+```json
+{
+  "equations": [
+    {
+      "target": "pest_severity",
+      "distribution": "categorical-ordinal",
+      "distribution_parameters": {
+        "categories": ["Low", "Medium", "High"],
+        "probabilities": [0.3, 0.45, 0.25]
+      },
+      "r2": null,
+      "intercept": [-1.0, 0.8],
+      "predictors": [
+        { "column": "humidity", "coefficient": 0.15 },
+        { "column": "soil_type", "coefficient": [0.4, -0.2], "reference": "Clay", "categories": ["Loam", "Sandy"] }
+      ]
+    }
+  ]
+}
+```
+
+`pest_severity` has K=3 categories, so:
+- `r2` is `null`
+- `intercept` is an array of length K-1 = 2 (thresholds on the cumulative logit scale)
+- `humidity` (continuous) has a scalar coefficient (same across all thresholds — proportional odds)
+- `soil_type` has M=3 categories (M-1=2 dummies), coefficient array length is M-1 = 2 (same across all thresholds)
+
+### Coefficient count rules
+
+The number of coefficients and intercepts depends on the target distribution type:
+
+| Target distribution | Intercept | Continuous predictor coefficient | Categorical predictor (M categories) coefficient |
+|---|---|---|---|
+| **Quantitative** (normal, gamma, lognormal, etc.) | scalar (1) | scalar (1) | array of length **M−1** |
+| **Categorical-nominal** (K categories) | array of length **K−1** | array of length **K−1** | array of length **(M−1)×(K−1)** |
+| **Categorical-ordinal** (K categories) | array of length **K−1** (thresholds) | scalar (1) — proportional odds | array of length **M−1** — same across all thresholds |

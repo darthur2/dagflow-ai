@@ -335,14 +335,16 @@ validate_formulas <- function(variables_path = "synthdata/variables.json",
           }
 
           if (!is.null(p$coefficient) && !is.null(p$categories)) {
-            n_coef <- length(p$coefficient)
-            n_cats <- length(p$categories)
-            if (n_coef != n_cats) {
-              errors[[length(errors) + 1]] <- list(
-                variable = tgt, field = "coefficient",
-                issue = sprintf("categorical predictor '%s' for '%s' has %d categories but %d coefficient value(s); expected %d",
-                                pcol, tgt, n_cats, n_coef, n_cats)
-              )
+            if (is.null(dist_name) || dist_name != "categorical-nominal") {
+              n_coef <- length(p$coefficient)
+              n_cats <- length(p$categories)
+              if (n_coef != n_cats) {
+                errors[[length(errors) + 1]] <- list(
+                  variable = tgt, field = "coefficient",
+                  issue = sprintf("categorical predictor '%s' for '%s' has %d categories but %d coefficient value(s); expected %d",
+                                  pcol, tgt, n_cats, n_coef, n_cats)
+                )
+              }
             }
           }
         }
@@ -374,6 +376,19 @@ validate_formulas <- function(variables_path = "synthdata/variables.json",
                 )
               )
             }
+          }
+        }
+
+        if (!is.null(dist_name) && dist_name == "categorical-ordinal" &&
+            !is.null(p$coefficient) && is.null(p$categories)) {
+          if (length(p$coefficient) != 1) {
+            errors[[length(errors) + 1]] <- list(
+              variable = tgt, field = "coefficient",
+              issue = sprintf(
+                "continuous predictor '%s' for categorical-ordinal target '%s' has %d coefficient(s); expected 1",
+                pcol, tgt, length(p$coefficient)
+              )
+            )
           }
         }
       }
