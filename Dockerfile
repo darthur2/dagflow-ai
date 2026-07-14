@@ -4,6 +4,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     libuv1-dev \
+    lsof \
     zlib1g-dev \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*

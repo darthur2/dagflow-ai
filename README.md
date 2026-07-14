@@ -190,7 +190,7 @@ To use a **different model**, set `AGENT_MODEL` alongside the matching API key:
 AGENT_MODEL=ssec-litellm/gemma-4-31b SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow
 
 # GPT-5.4 Nano via OpenAI
-AGENT_MODEL=openai/gpt-5.4-nano OPENAI_API_KEY=your_key_here docker compose run --service-ports dagflow
+AGENT_MODEL=openai/gpt-5.4-mini OPENAI_API_KEY=your_key_here docker compose run --service-ports dagflow
 
 # Claude via Anthropic
 AGENT_MODEL=anthropic/claude-sonnet-4-20250514 ANTHROPIC_API_KEY=your_key_here docker compose run --service-ports dagflow
