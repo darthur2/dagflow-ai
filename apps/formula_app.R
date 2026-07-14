@@ -55,7 +55,12 @@ format_predictor_text <- function(p) {
     parts <- sprintf("%s (%.3f)", cats, coefs)
     sprintf("%s [%s]", col, paste(parts, collapse = ", "))
   } else {
-    sprintf("%s (%.4f)", col, as.numeric(coef))
+    coefs <- as.numeric(coef)
+    if (length(coefs) == 1) {
+      sprintf("%s (%.4f)", col, coefs)
+    } else {
+      sprintf("%s [%s]", col, paste(sprintf("%.4f", coefs), collapse = ", "))
+    }
   }
 }
 
@@ -207,13 +212,30 @@ server <- function(input, output, session) {
             idx <- idx + 1
           }
         } else {
-          items[[length(items) + 1]] <- numericInput(
-            input_id(target, paste0("coef_", idx)),
-            label = sprintf("%s [%s]", p$column, link),
-            value = coef,
-            step = 0.001
-          )
-          idx <- idx + 1
+          coefs <- as.numeric(coef)
+          if (length(coefs) == 1) {
+            items[[length(items) + 1]] <- numericInput(
+              input_id(target, paste0("coef_", idx)),
+              label = sprintf("%s [%s]", p$column, link),
+              value = coefs,
+              step = 0.001
+            )
+            idx <- idx + 1
+          } else {
+            target_cats <- unlist(eq$distribution_parameters$categories %||% list())
+            ref_cat <- target_cats[1] %||% "reference"
+            items[[length(items) + 1]] <- h5(sprintf("%s (ref outcome = %s)", p$column, ref_cat))
+            for (k in seq_along(coefs)) {
+              outcome_label <- if (k + 1 <= length(target_cats)) target_cats[k + 1] else sprintf("cat_%d", k)
+              items[[length(items) + 1]] <- numericInput(
+                input_id(target, paste0("coef_", idx)),
+                label = sprintf("  vs %s [%s]", outcome_label, link),
+                value = coefs[k],
+                step = 0.001
+              )
+              idx <- idx + 1
+            }
+          }
         }
       }
     }
@@ -254,7 +276,16 @@ server <- function(input, output, session) {
           idx <- 1
           for (j in seq_along(preds)) {
             p <- preds[[j]]
-            n_coef <- if (is.null(p$reference)) 1 else length(unlist(p$categories))
+            n_coef <- if (is.null(p$reference)) {
+              target_cats <- unlist(eq$distribution_parameters$categories %||% list())
+              if (length(target_cats) > 1 && eq$distribution == "categorical-nominal") {
+                length(target_cats) - 1
+              } else {
+                1
+              }
+            } else {
+              length(unlist(p$categories))
+            }
             if (n_coef == 1) {
               val <- input[[input_id(target, paste0("coef_", idx))]]
               if (!is.null(val)) preds[[j]]$coefficient <- val
