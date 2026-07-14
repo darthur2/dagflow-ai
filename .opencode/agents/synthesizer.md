@@ -40,20 +40,30 @@ The orchestrator MUST read `synthdata/pipeline_state.json` before every decision
 
 ### Before invoking a sub-agent:
 1. Read `synthdata/pipeline_state.json`
-2. Verify `gates.<stage>.status` is `"ready"`
-3. If not `"ready"`, stop and tell the user which dependency is blocking
-4. Set `current_stage` to the stage name
-5. Set `gates.<stage>.status` to `"in_progress"`
-6. Write state back
+2. **Run the mandatory gate check:**
+   ```
+   Rscript R/check_gate.R <stage_name>
+   ```
+   If this command exits with a non-zero status, copy its output verbatim to the user and STOP. Do NOT proceed until the user addresses the issue.
+3. Set `current_stage` to the stage name
+4. Set `gates.<stage>.status` to `"in_progress"`
+5. Write state back
 
-### After sub-agent completes (interactive mode):
+### Mandatory pause after sub-agent completes (interactive mode):
+
+Rules:
+- You MUST stop and present a summary to the user after every stage.
+- You MUST NOT invoke the next sub-agent until the user explicitly says "continue".
+- The `check_gate.R` script is your enforcement: the next stage WILL fail its gate check until you follow the protocol below.
+
 1. Set `gates.<stage>.status` to `"completed"`
 2. Show a summary to the user
 3. Ask: *"Satisfied? Type feedback, 'app' to launch the editor, or 'continue'."*
 4. **On feedback**: set status to `"feedback"`, re-invoke sub-agent, loop
 5. **On app**: launch the Shiny app, wait for user to save and confirm, loop
 6. **On continue**: set status to `"approved"`, set the next stage's gate to `"ready"`
-7. Write state back, proceed
+7. Write state back
+8. **Verify:** Run `Rscript R/check_gate.R <next_stage>` to confirm the gate is now "ready" before invoking the next sub-agent
 
 ### Invalidation cascade (going back)
 
@@ -200,7 +210,7 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
 When the user asks you to launch an app, use `nohup` to keep it alive after the shell session ends:
 
 ```bash
-nohup R -e "shiny::runApp('apps/APP_NAME.R', port=3838, host='0.0.0.0', launch.browser=FALSE)" > apps/shiny_app.log 2>&1 &
+nohup R -e "shiny::runApp('apps/APP_NAME.R', port=3838, host='0.0.0.0', launch.browser=FALSE)" > /tmp/shiny_app.log 2>&1 &
 ```
 
 After launching, tell the user: *"Open http://localhost:3838 in your browser to use the app."*

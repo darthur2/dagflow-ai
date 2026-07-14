@@ -1,0 +1,61 @@
+
+R version 4.5.2 (2025-10-31) -- "[Not] Part in a Rumble"
+Copyright (C) 2025 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> shiny::runApp('apps/data_viz_app.R', port=3838, host='0.0.0.0', launch.browser=FALSE)
+Loading required package: shiny
+
+Listening on http://0.0.0.0:3838
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+`geom_smooth()` using formula = 'y ~ x'
+Warning: Error in geom_histogram: Problem while computing stat.
+ℹ Error occurred in the 1st layer.
+Caused by error in `setup_params()`:
+! `stat_bin()` requires a continuous x aesthetic.
+✖ the x aesthetic is discrete.
+ℹ Perhaps you want `stat="count"`?
+  221: <Anonymous>
+  220: signalCondition
+  219: signal_abort
+  218: rlang::abort
+  217: cli::cli_abort
+  216: handlers[[1L]]
+  215: <Anonymous>
+  214: signalCondition
+  213: signal_abort
+  212: rlang::abort
+  211: cli::cli_abort
+  210: setup_params
+  209: self$stat$setup_params
+  208: compute_statistic
+  207: l$compute_statistic
+  206: f
+  199: by_layer
+  198: ggplot_build.ggplot2::ggplot
+  196: print.ggplot2::ggplot
+   99: output$hist_plot
+    1: shiny::runApp
+Input to asJSON(keep_vec_names=TRUE) is a named vector. In a future version of jsonlite, this option will not be supported, and named vectors will be translated into arrays instead of objects. If you want JSON object output, please use a named list instead. See ?toJSON.
