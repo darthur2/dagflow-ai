@@ -24,6 +24,7 @@ RUN cd .opencode && npm install
 
 COPY opencode-config.json /etc/opencode-config.json
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3838
 
