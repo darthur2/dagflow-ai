@@ -1,4 +1,4 @@
-source("../R/calibrate_formula.R")
+source("../utils/calibrate_formula.R")
 
 test_that("calibrate_normal_formula recovers parameters from stochastic simulation", {
   set.seed(1001)

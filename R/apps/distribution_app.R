@@ -12,7 +12,7 @@ find_project_root <- function() {
 }
 
 root <- find_project_root()
-source(file.path(root, "R", "plot_distribution.R"))
+source(file.path(root, "R", "utils", "plot_distribution.R"))
 
 get_param_names <- function(distribution) {
   switch(distribution,

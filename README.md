@@ -304,21 +304,30 @@ plots. Useful for sanity-checking that the generated data looks realistic.
 ├── opencode-config.json    # API provider configuration
 │
 ├── R/                      # R source files for the generation engine
-│   ├── generate_data.R           # Main entry point
-│   ├── topological_order.R       # Kahn's algorithm for DAG sorting
-│   ├── build_design_matrix.R     # Build X matrix from parent variables
-│   ├── sample_distribution.R     # Sampling functions (one per distribution)
-│   ├── calibrate_formula.R       # R² calibration (one per distribution)
-│   ├── sample_with_formula.R     # Dispatch: with or without parents
-│   ├── plot_dag.R                # visNetwork DAG plotting
-│   └── plot_distribution.R       # ggplot2 distribution plotting
-│
-├── apps/                   # Shiny web app source code
-│   ├── variable_app.R
-│   ├── distribution_app.R
-│   ├── dag_app.R
-│   ├── formula_app.R
-│   └── data_viz_app.R
+│   ├── apps/                     # Shiny web app source code
+│   │   ├── variable_app.R
+│   │   ├── distribution_app.R
+│   │   ├── dag_app.R
+│   │   ├── formula_app.R
+│   │   └── data_viz_app.R
+│   ├── utils/                    # R utility scripts
+│   │   ├── generate_data.R           # Main entry point
+│   │   ├── topological_order.R       # Kahn's algorithm for DAG sorting
+│   │   ├── build_design_matrix.R     # Build X matrix from parent variables
+│   │   ├── sample_distribution.R     # Sampling functions (one per distribution)
+│   │   ├── calibrate_formula.R       # R² calibration (one per distribution)
+│   │   ├── sample_with_formula.R     # Dispatch: with or without parents
+│   │   ├── plot_dag.R                # visNetwork DAG plotting
+│   │   ├── plot_distribution.R       # ggplot2 distribution plotting
+│   │   ├── check_gate.R              # Pipeline gate enforcement
+│   │   ├── validate_variables.R      # Variable validation
+│   │   ├── validate_distributions.R  # Distribution validation
+│   │   ├── validate_dag.R            # DAG validation
+│   │   └── validate_formulas.R       # Formula validation
+│   └── tests/                   # R unit tests
+│       ├── test-calibrate_formula.R
+│       ├── test-calibrate_formula_stochastic.R
+│       └── test-plot_distribution.R
 │
 ├── .opencode/agents/       # AI agent definitions (prompts and settings)
 │   ├── synthesizer.md            # Orchestrator agent
@@ -326,8 +335,6 @@ plots. Useful for sanity-checking that the generated data looks realistic.
 │   ├── distribution-selector.md  # Stage 2
 │   ├── dag-creator.md            # Stage 3
 │   └── formula-generator.md      # Stage 4
-│
-├── tests/                  # R unit tests
 │
 ├── synthdata/              # Generated at runtime (not tracked by git)
 │   ├── variables.json

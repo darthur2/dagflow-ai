@@ -3,7 +3,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) < 1) {
-  cat("Usage: Rscript R/check_gate.R <stage_name>\n", file = stderr())
+  cat("Usage: Rscript R/utils/check_gate.R <stage_name>\n", file = stderr())
   quit(status = 1)
 }
 

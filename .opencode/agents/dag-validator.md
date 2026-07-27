@@ -18,7 +18,7 @@ You are the **dag-validator**, a structural validation agent for the causal DAG.
 
 1. Run the R validation script:
    ```bash
-   Rscript R/validate_dag.R [variables_path] [dag_path] [output_path]
+       Rscript R/utils/validate_dag.R [variables_path] [dag_path] [output_path]
    ```
    - Default `variables_path`: `synthdata/variables.json`
    - Default `dag_path`: `synthdata/dag.json`

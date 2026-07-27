@@ -1,4 +1,4 @@
-source("../R/calibrate_formula.R")
+source("../utils/calibrate_formula.R")
 
 test_that("recovers exact beta1 and sigma_error at true target_r2", {
   set.seed(1)

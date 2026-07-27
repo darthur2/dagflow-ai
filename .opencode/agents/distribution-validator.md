@@ -18,7 +18,7 @@ You are the **distribution-validator**, a structural validation agent for synthe
 
 1. Run the R validation script:
    ```bash
-   Rscript R/validate_distributions.R [variables_path] [distributions_path] [output_path]
+       Rscript R/utils/validate_distributions.R [variables_path] [distributions_path] [output_path]
    ```
    - Default `variables_path`: `synthdata/variables.json`
    - Default `distributions_path`: `synthdata/distributions.json`

@@ -3,6 +3,6 @@
 .opencode/node_modules/
 .opencode/package-lock.json
 docs/
-tests/
+R/tests/
 data/
 AGENTS.md

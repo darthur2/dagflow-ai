@@ -31,19 +31,19 @@ case "${1:-opencode}" in
     ;;
   generate)
     n="${2:-1000}"
-    exec R -e "source('R/generate_data.R'); generate_data(n=$n, output_path='synthdata/generated_data.csv')"
+    exec R -e "source('R/utils/generate_data.R'); generate_data(n=$n, output_path='synthdata/generated_data.csv')"
     ;;
   app)
     name="${2:-data_viz}"
     case "$name" in
       variable|distribution|dag|formula|data_viz)
-        exec R -e "shiny::runApp('apps/${name}_app.R', port=3838, host='0.0.0.0', launch.browser=FALSE)"
+        exec R -e "shiny::runApp('R/apps/${name}_app.R', port=3838, host='0.0.0.0', launch.browser=FALSE)"
         ;;
       *) echo "Unknown app: $name"; exit 1 ;;
     esac
     ;;
   test)
-    exec R -e "testthat::test_dir('tests', reporter='summary')"
+    exec R -e "testthat::test_dir('R/tests', reporter='summary')"
     ;;
   shell)
     exec bash

@@ -42,7 +42,7 @@ The orchestrator MUST read `synthdata/pipeline_state.json` before every decision
 1. Read `synthdata/pipeline_state.json`
 2. **Run the mandatory gate check:**
    ```
-   Rscript R/check_gate.R <stage_name>
+   Rscript R/utils/check_gate.R <stage_name>
    ```
    If this command exits with a non-zero status, copy its output verbatim to the user and STOP. Do NOT proceed until the user addresses the issue.
 3. Set `current_stage` to the stage name
@@ -63,7 +63,7 @@ Rules:
 5. **On app**: launch the Shiny app, wait for user to save and confirm, loop
 6. **On continue**: set status to `"approved"`, set the next stage's gate to `"ready"`
 7. Write state back
-8. **Verify:** Run `Rscript R/check_gate.R <next_stage>` to confirm the gate is now "ready" before invoking the next sub-agent
+8. **Verify:** Run `Rscript R/utils/check_gate.R <next_stage>` to confirm the gate is now "ready" before invoking the next sub-agent
 
 ### Invalidation cascade (going back)
 
@@ -120,7 +120,7 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
       - Loop back to step 3
    b. If `valid` is `true` — proceed to the Gate Protocol
 7. In **auto mode**: set `gates.variables.status` to `"approved"`, next gate to `"ready"`, proceed
-8. In **interactive mode**: follow the **Gate Protocol** — show a summary of the variables, ask for feedback/app/continue, handle cascade invalidation if the user wants to go back. Use `apps/variable_app.R` for the app launch.
+8. In **interactive mode**: follow the **Gate Protocol** — show a summary of the variables, ask for feedback/app/continue, handle cascade invalidation if the user wants to go back. Use `R/apps/variable_app.R` for the app launch.
 
 ### Stage 2: Distributions
 
@@ -137,7 +137,7 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
       - Loop back to step 3
    b. If `valid` is `true` — proceed to the Gate Protocol
 7. In **auto mode**: set `gates.distributions.status` to `"approved"`, next gate to `"ready"`, proceed
-8. In **interactive mode**: follow the **Gate Protocol** — show a summary, ask for feedback/app/continue. Use `apps/distribution_app.R` for the app launch.
+8. In **interactive mode**: follow the **Gate Protocol** — show a summary, ask for feedback/app/continue. Use `R/apps/distribution_app.R` for the app launch.
 
 ### Stage 3: DAG
 
@@ -157,7 +157,7 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
       - Loop back to step 3
    b. If `valid` is `true` — proceed to the Gate Protocol
 8. In **auto mode**: set `gates.dag.status` to `"approved"`, next gate to `"ready"`, proceed
-9. In **interactive mode**: follow the **Gate Protocol** — show a summary (nodes, edges), ask for feedback/app/continue. Use `apps/dag_app.R` for the app launch.
+9. In **interactive mode**: follow the **Gate Protocol** — show a summary (nodes, edges), ask for feedback/app/continue. Use `R/apps/dag_app.R` for the app launch.
 
 ### Stage 4: Formulas
 
@@ -187,14 +187,14 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
       - Loop back to step 3
    b. If `valid` is `true` — proceed to the Gate Protocol
 7. In **auto mode**: set `gates.formulas.status` to `"approved"`, next gate to `"ready"`, proceed
-8. In **interactive mode**: follow the **Gate Protocol** — show a summary (targets, distributions, predictor counts), ask for feedback/app/continue. Use `apps/formula_app.R` for the app launch.
+8. In **interactive mode**: follow the **Gate Protocol** — show a summary (targets, distributions, predictor counts), ask for feedback/app/continue. Use `R/apps/formula_app.R` for the app launch.
 
 ### Stage 5: Generation
 
 1. Follow the **Gate Protocol**: verify `gates.generation.status` is `"ready"` before proceeding
 2. Run the R data generation script:
    ```
-   R -e 'setwd("<project_root>"); source("R/generate_data.R"); df <- generate_data(n = <n>, output_path = "synthdata/generated_data.csv")'
+   R -e 'setwd("<project_root>"); source("R/utils/generate_data.R"); df <- generate_data(n = <n>, output_path = "synthdata/generated_data.csv")'
    ```
    Ask the user how many rows they want if they haven't specified.
 3. If the script errors:  
@@ -202,7 +202,7 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
    b. Explain what likely caused it and which agent/tool could fix it (e.g., "the formula-generator produced mismatched coefficients — you may want to re-run the formula stage")  
    c. Do NOT fix the code yourself
 4. If successful: set `gates.generation.status` to `"approved"` and show a summary of the generated dataset
-5. In **interactive mode**: launch `apps/data_viz_app.R` via bash using the nohup pattern (see *Launching Shiny apps*) for the user to explore. Ask for feedback. If they want changes, determine which stage is affected and offer to restart from that stage following the **invalidation cascade**.
+5. In **interactive mode**: launch `R/apps/data_viz_app.R` via bash using the nohup pattern (see *Launching Shiny apps*) for the user to explore. Ask for feedback. If they want changes, determine which stage is affected and offer to restart from that stage following the **invalidation cascade**.
 6. Update `pipeline_state.json` with completion status
 
 ## Launching Shiny apps
@@ -210,7 +210,7 @@ In **interactive mode**, the variables gate starts as `"ready"`; all others as `
 When the user asks you to launch an app, use `nohup` to keep it alive after the shell session ends:
 
 ```bash
-nohup R -e "shiny::runApp('apps/APP_NAME.R', port=3838, host='0.0.0.0', launch.browser=FALSE)" > /tmp/shiny_app.log 2>&1 &
+nohup R -e "shiny::runApp('R/apps/APP_NAME.R', port=3838, host='0.0.0.0', launch.browser=FALSE)" > /tmp/shiny_app.log 2>&1 &
 ```
 
 After launching, tell the user: *"Open http://localhost:3838 in your browser to use the app."*

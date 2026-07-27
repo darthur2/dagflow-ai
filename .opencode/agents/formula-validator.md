@@ -18,7 +18,7 @@ You are the **formula-validator**, a structural validation agent for synthetic d
 
 1. Run the R validation script:
    ```bash
-   Rscript R/validate_formulas.R [variables_path] [dag_path] [distributions_path] [formulas_path] [output_path]
+       Rscript R/utils/validate_formulas.R [variables_path] [dag_path] [distributions_path] [formulas_path] [output_path]
    ```
    - Default `variables_path`: `synthdata/variables.json`
    - Default `dag_path`: `synthdata/dag.json`

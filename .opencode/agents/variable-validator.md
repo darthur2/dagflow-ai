@@ -18,7 +18,7 @@ You are the **variable-validator**, a structural validation agent for synthetic 
 
 1. Run the R validation script:
    ```bash
-   Rscript R/validate_variables.R [variables_path] [output_path]
+       Rscript R/utils/validate_variables.R [variables_path] [output_path]
    ```
    - Default `variables_path`: `synthdata/variables.json`
    - Default `output_path`: `synthdata/variable_validation_result.json`

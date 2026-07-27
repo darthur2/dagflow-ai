@@ -1,4 +1,4 @@
-source("../R/plot_distribution.R")
+source("../utils/plot_distribution.R")
 
 test_that("returns a ggplot object with valid finite bounds", {
   p <- plot_normal_marginal(mean = 0, sd = 1, min = -2, max = 2)

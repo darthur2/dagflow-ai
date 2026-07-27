@@ -12,7 +12,7 @@ find_project_root <- function() {
 }
 
 root <- find_project_root()
-source(file.path(root, "R", "plot_dag.R"))
+source(file.path(root, "R", "utils", "plot_dag.R"))
 
 load_dag_file <- function(path) {
   if (!file.exists(path)) {

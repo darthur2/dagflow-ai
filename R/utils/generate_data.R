@@ -1,8 +1,8 @@
-source("R/calibrate_formula.R")
-source("R/sample_distribution.R")
-source("R/topological_order.R")
-source("R/build_design_matrix.R")
-source("R/sample_with_formula.R")
+source("R/utils/calibrate_formula.R")
+source("R/utils/sample_distribution.R")
+source("R/utils/topological_order.R")
+source("R/utils/build_design_matrix.R")
+source("R/utils/sample_with_formula.R")
 
 sample_unconditional <- function(distribution, dist_params, n) {
   sample_with_formula(distribution, dist_params,
