@@ -43,7 +43,7 @@ case "${1:-opencode}" in
     esac
     ;;
   test)
-    exec R -e "testthat::test_dir('R/tests', reporter='summary')"
+    exec R -e "testthat::test_dir('tests', reporter='summary')"
     ;;
   shell)
     exec bash

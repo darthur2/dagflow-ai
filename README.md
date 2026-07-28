@@ -324,10 +324,11 @@ plots. Useful for sanity-checking that the generated data looks realistic.
 │   │   ├── validate_distributions.R  # Distribution validation
 │   │   ├── validate_dag.R            # DAG validation
 │   │   └── validate_formulas.R       # Formula validation
-│   └── tests/                   # R unit tests
-│       ├── test-calibrate_formula.R
-│       ├── test-calibrate_formula_stochastic.R
-│       └── test-plot_distribution.R
+│
+├── tests/                   # R unit tests
+│   ├── test-calibrate_formula.R
+│   ├── test-calibrate_formula_stochastic.R
+│   └── test-plot_distribution.R
 │
 ├── .opencode/agents/       # AI agent definitions (prompts and settings)
 │   ├── synthesizer.md            # Orchestrator agent
