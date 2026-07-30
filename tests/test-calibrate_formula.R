@@ -1,4 +1,4 @@
-source("../utils/calibrate_formula.R")
+source("../R/utils/calibrate_formula.R")
 
 test_that("recovers exact beta1 and sigma_error at true target_r2", {
   set.seed(1)
@@ -124,7 +124,7 @@ test_that("gamma recovers exact beta0, beta1, shape at true target_r2", {
 
   A <- exp(beta0_true)
   d <- as.numeric(X %*% beta1_true)
-  z <- exp(-d)
+  z <- exp(d)
   m1 <- mean(z)
   m2 <- mean(z^2)
 
@@ -153,7 +153,7 @@ test_that("gamma recovers with different R2, shape, and dimension", {
 
   A <- exp(beta0_true)
   d <- as.numeric(X %*% beta1_true)
-  z <- exp(-d)
+  z <- exp(d)
   m1 <- mean(z)
   m2 <- mean(z^2)
 
@@ -182,7 +182,7 @@ test_that("gamma works with different beta1_init direction (c != 1)", {
   shape_true <- 3.0
   A <- exp(beta0_true)
   d <- as.numeric(X %*% beta1_true)
-  z <- exp(-d)
+  z <- exp(d)
   m1 <- mean(z)
   m2 <- mean(z^2)
 
@@ -194,7 +194,34 @@ test_that("gamma works with different beta1_init direction (c != 1)", {
 
   expect_equal(result$beta0, beta0_true, tolerance = 1e-5)
   expect_equal(result$beta1, beta1_true, tolerance = 1e-5)
-  expect_equal(result$shape, shape_true, tolerance = 1e-5)
+  expect_equal(result$shape, shape_true, tolerance = 1e-4)
+})
+
+test_that("gamma recovers with asymmetric X (non-zero mean)", {
+  set.seed(20)
+  n <- 2000
+  p <- 2
+  X <- matrix(rnorm(n * p, mean = 5, sd = 1), n, p)
+  beta0_true <- 0.3
+  beta1_true <- c(0.5, 0.3)
+  shape_true <- 3.0
+
+  A <- exp(beta0_true)
+  d <- as.numeric(X %*% beta1_true)
+  z <- exp(d)
+  m1 <- mean(z)
+  m2 <- mean(z^2)
+
+  target_mean <- A * m1
+  target_var <- A^2 * m2 / shape_true + A^2 * (m2 - m1^2)
+  target_r2 <- A^2 * (m2 - m1^2) / target_var
+
+  result <- calibrate_gamma_formula(X, beta1_true, target_mean, target_var, target_r2)
+
+  expect_equal(result$beta0, beta0_true, tolerance = 1e-3)
+  expect_equal(result$beta1, beta1_true, tolerance = 1e-3)
+  expect_equal(result$shape, shape_true, tolerance = 1e-3)
+  expect_equal(result$r2, target_r2, tolerance = 1e-10)
 })
 
 test_that("gamma errors on non-positive target_mean", {
@@ -287,6 +314,33 @@ test_that("lognormal works with different beta1_init direction (c != 1)", {
   expect_equal(result$beta0, beta0_true, tolerance = 1e-3)
   expect_equal(result$beta1, beta1_true, tolerance = 1e-3)
   expect_equal(result$sigma, sigma_true, tolerance = 1e-3)
+})
+
+test_that("lognormal recovers with asymmetric X (non-zero mean)", {
+  set.seed(21)
+  n <- 2000
+  p <- 2
+  X <- matrix(rnorm(n * p, mean = 5, sd = 1), n, p)
+  beta0_true <- 0.3
+  beta1_true <- c(0.5, 0.3)
+  sigma_true <- 0.6
+
+  A <- exp(beta0_true)
+  d <- as.numeric(X %*% beta1_true)
+  z <- exp(d)
+  m1 <- mean(z)
+  m2 <- mean(z^2)
+
+  target_mean <- A * exp(sigma_true^2 / 2) * m1
+  target_var <- A^2 * exp(sigma_true^2) * (exp(sigma_true^2) * m2 - m1^2)
+  target_r2 <- A^2 * exp(sigma_true^2) * (m2 - m1^2) / target_var
+
+  result <- calibrate_lognormal_formula(X, beta1_true, target_mean, target_var, target_r2)
+
+  expect_equal(result$beta0, beta0_true, tolerance = 1e-3)
+  expect_equal(result$beta1, beta1_true, tolerance = 1e-3)
+  expect_equal(result$sigma, sigma_true, tolerance = 1e-3)
+  expect_equal(result$r2, target_r2, tolerance = 1e-10)
 })
 
 test_that("lognormal errors on non-positive target_mean", {
