@@ -78,11 +78,11 @@ calibrate_gamma_formula <- function(X, beta1_init, target_mean, target_var, targ
 
   tau <- 1 + target_r2 * target_var / target_mean^2
 
-  pos_extreme <- max(d, 0)
-  c_safe <- if (pos_extreme > 0) 700 / pos_extreme else 1e6
+  neg_extreme <- max(-min(d), 0)
+  c_safe <- if (neg_extreme > 0) 700 / neg_extreme else 1e6
 
   F <- function(c) {
-    z <- exp(c * d)
+    z <- exp(-c * d)
     mean(z^2) / mean(z)^2
   }
 
@@ -100,7 +100,7 @@ calibrate_gamma_formula <- function(X, beta1_init, target_mean, target_var, targ
 
   c <- stats::uniroot(function(c) F(c) - tau, c(0, c_high))$root
 
-  z <- exp(c * d)
+  z <- exp(-c * d)
   m1 <- mean(z)
   m2 <- mean(z^2)
 
