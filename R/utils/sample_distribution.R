@@ -125,6 +125,11 @@ sample_gamma <- function(n, shape = NULL, rate = NULL, min = 0, max = Inf, X = N
   p_high <- stats::pgamma(max - min, shape, rate)
   u <- stats::runif(n)
   min + stats::qgamma(u * p_high, shape, rate)
+
+#p_low  <- stats::pgamma(min, shape, rate)
+#p_high <- stats::pgamma(max, shape, rate)
+#u <- stats::runif(n)
+#stats::qgamma(p_low + u * (p_high - p_low), shape, rate)
 }
 
 sample_lognormal <- function(n, meanlog = NULL, sdlog = NULL, min = 0, max = Inf, X = NULL, beta1 = NULL, beta0 = NULL) {
@@ -170,6 +175,11 @@ sample_lognormal <- function(n, meanlog = NULL, sdlog = NULL, min = 0, max = Inf
   p_high <- stats::plnorm(max - min, meanlog, sdlog)
   u <- stats::runif(n)
   min + stats::qlnorm(u * p_high, meanlog, sdlog)
+
+  #p_low  <- stats::plnorm(min, meanlog, sdlog)
+  #p_high <- stats::plnorm(max, meanlog, sdlog)
+  #u <- stats::runif(n)
+  #stats::qlnorm(p_low + u * (p_high - p_low), meanlog, sdlog)
 }
 
 sample_beta <- function(n, shape1 = NULL, shape2 = NULL, phi = NULL, min = 0, max = 1, X = NULL, beta1 = NULL, beta0 = NULL) {
