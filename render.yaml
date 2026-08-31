@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: dagflow-web
+    env: docker
+    rootDir: .
+    dockerfilePath: ./Dockerfile
+    dockerCommand: node web/server.js
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: dagflow-redis
+          property: connectionString
+      - key: DAGFLOW_SESSION_ROOT
+        value: /tmp/dagflow-sessions
+      - key: DAGFLOW_MAX_ACTIVE_JOBS
+        value: "1"
+      - key: DAGFLOW_SESSION_TTL_MS
+        value: "86400000"
+      - key: DAGFLOW_SESSION_LIMIT_WINDOW_MS
+        value: "3600000"
+      - key: DAGFLOW_SESSION_LIMIT_MAX
+        value: "10"
+
+  - type: worker
+    name: dagflow-worker
+    env: docker
+    rootDir: .
+    dockerfilePath: ./Dockerfile
+    dockerCommand: node web/worker.js
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: dagflow-redis
+          property: connectionString
+      - key: DAGFLOW_SESSION_ROOT
+        value: /tmp/dagflow-sessions
+      - key: DAGFLOW_MAX_ACTIVE_JOBS
+        value: "1"
+      - key: DAGFLOW_SESSION_TTL_MS
+        value: "86400000"
+      - key: WORKER_HEALTH_PORT
+        value: "3999"
+
+  - type: redis
+    name: dagflow-redis
+    ipAllowList: []

@@ -1,20 +1,13 @@
 library(shiny)
 library(jsonlite)
 
-`%||%` <- function(a, b) if (is.null(a)) b else a
+source(file.path(getwd(), "R", "utils", "project_paths.R"))
 
-find_project_root <- function() {
-  d <- getwd()
-  while (d != dirname(d)) {
-    if (dir.exists(file.path(d, "synthdata")) || dir.exists(file.path(d, "R"))) return(d)
-    d <- dirname(d)
-  }
-  getwd()
-}
+`%||%` <- function(a, b) if (is.null(a)) b else a
 
 load_variables <- function(path = NULL) {
   if (is.null(path)) {
-    path <- file.path(find_project_root(), "synthdata", "variables.json")
+    path <- file.path(get_synthdata_dir(), "variables.json")
   }
   if (!file.exists(path)) {
     stop("variables.json not found")
@@ -24,7 +17,7 @@ load_variables <- function(path = NULL) {
 
 save_variables <- function(vars, path = NULL) {
   if (is.null(path)) {
-    path <- file.path(find_project_root(), "synthdata", "variables.json")
+    path <- file.path(get_synthdata_dir(), "variables.json")
   }
   json <- jsonlite::toJSON(vars, pretty = TRUE, auto_unbox = TRUE)
   writeLines(json, path)

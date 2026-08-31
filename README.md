@@ -167,9 +167,51 @@ If you want to use a different model, you'll need an API key for its provider:
 
 Contact your administrator or service provider to obtain one.
 
-### 4. Run the pipeline
+### 5. Run the web app
 
-The default model is `opencode/deepseek-v4-flash-free` — free and requires no API key.
+The web app provides a public-facing session launcher where each user enters
+their own provider, model, and API key.
+
+```bash
+docker compose up web redis
+```
+
+Then open `http://localhost:3000`.
+
+The web flow creates an isolated workspace per session, queues jobs through
+Redis, shows live logs, and offers a downloadable package when the run
+finishes.
+
+By default, session artifacts are retained for 24 hours. The server also
+limits how many jobs can run at once.
+
+The worker service exposes a `/health` endpoint on port `3999`, and Compose
+uses that for its healthcheck.
+
+The web app is now the recommended way to use DagFlow.
+
+For Render, the deployment shape is:
+
+- Web service: `node web/server.js`
+- Worker service: `node web/worker.js`
+- Redis: managed Redis or a Render Redis add-on
+
+### Render Deployment
+
+1. Create a new Render service from this repo using `render.yaml`.
+2. Deploy the `dagflow-web` web service.
+3. Deploy the `dagflow-worker` worker service.
+4. Attach the `dagflow-redis` Redis instance.
+5. Set any provider API keys or base URLs as environment variables on the web and worker services if your provider requires them.
+6. Open the Render URL for the web service and submit a provider, model, and API key.
+
+The worker is now Render-compatible because it runs generation directly in the
+worker process instead of trying to spawn nested Docker containers.
+
+### 4. Run the legacy interactive pipeline
+
+If you want the older single-session CLI flow, the default model is
+`opencode/deepseek-v4-flash-free` and requires no API key.
 
 ```bash
 docker compose run --service-ports dagflow

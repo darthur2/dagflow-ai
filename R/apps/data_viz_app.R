@@ -1,14 +1,7 @@
 library(shiny)
 library(ggplot2)
 
-find_project_root <- function() {
-  d <- getwd()
-  while (d != dirname(d)) {
-    if (dir.exists(file.path(d, "synthdata")) || dir.exists(file.path(d, "R"))) return(d)
-    d <- dirname(d)
-  }
-  getwd()
-}
+source(file.path(getwd(), "R", "utils", "project_paths.R"))
 
 mosaic_data <- function(data, var1, var2) {
   tbl <- table(data[[var1]], data[[var2]])
@@ -83,7 +76,7 @@ server <- function(input, output, session) {
   values <- reactiveValues(data = NULL)
 
   observeEvent(input$load_btn, {
-    path <- file.path(find_project_root(), "synthdata", "generated_data.csv")
+    path <- file.path(get_synthdata_dir(), "generated_data.csv")
     tryCatch({
       df <- read.csv(path, stringsAsFactors = FALSE)
       values$data <- df

@@ -5,6 +5,9 @@ CONFIG_DIR="${HOME}/.config/opencode"
 AUTH_DIR="${HOME}/.local/share/opencode"
 mkdir -p "$CONFIG_DIR" "$AUTH_DIR"
 
+WORKSPACE_DIR="${DAGFLOW_WORKSPACE:-/workspace}"
+mkdir -p "$WORKSPACE_DIR/synthdata"
+
 if [ ! -f "$CONFIG_DIR/opencode.json" ]; then
   cp /etc/opencode-config.json "$CONFIG_DIR/opencode.json"
   if [ -n "$SSEC_LITELLM_BASE_URL" ]; then
@@ -23,7 +26,7 @@ if [ -n "$SSEC_LITELLM_API_KEY" ]; then
 EOF
 fi
 
-cd /workspace
+cd "$WORKSPACE_DIR"
 
 case "${1:-opencode}" in
   opencode)
@@ -31,7 +34,7 @@ case "${1:-opencode}" in
     ;;
   generate)
     n="${2:-1000}"
-    exec R -e "source('R/utils/generate_data.R'); generate_data(n=$n, output_path='synthdata/generated_data.csv')"
+    exec R -e "source('R/utils/generate_data.R'); generate_data(n=$n, output_path=file.path(Sys.getenv('DAGFLOW_WORKSPACE', unset = '/workspace'), 'synthdata', 'generated_data.csv'))"
     ;;
   app)
     name="${2:-data_viz}"
@@ -43,7 +46,7 @@ case "${1:-opencode}" in
     esac
     ;;
   test)
-    exec R -e "testthat::test_dir('R/tests', reporter='summary')"
+    exec R -e "setwd('/workspace'); source('R/utils/plot_distribution.R'); testthat::test_dir('R/tests', reporter='summary')"
     ;;
   shell)
     exec bash

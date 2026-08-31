@@ -1,0 +1,12 @@
+{
+  "name": "dagflow-web",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "redis": "^4.7.0"
+  },
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  }
+}

@@ -1,20 +1,13 @@
 library(shiny)
 library(jsonlite)
 
-`%||%` <- function(a, b) if (is.null(a)) b else a
+source(file.path(getwd(), "R", "utils", "project_paths.R"))
 
-find_project_root <- function() {
-  d <- getwd()
-  while (d != dirname(d)) {
-    if (dir.exists(file.path(d, "synthdata")) || dir.exists(file.path(d, "R"))) return(d)
-    d <- dirname(d)
-  }
-  getwd()
-}
+`%||%` <- function(a, b) if (is.null(a)) b else a
 
 load_formulas <- function(path = NULL) {
   if (is.null(path)) {
-    path <- file.path(find_project_root(), "synthdata", "formulas.json")
+    path <- file.path(get_synthdata_dir(), "formulas.json")
   }
   if (!file.exists(path)) {
     stop("formulas.json not found")
@@ -24,7 +17,7 @@ load_formulas <- function(path = NULL) {
 
 save_formulas <- function(formulas, path = NULL) {
   if (is.null(path)) {
-    path <- file.path(find_project_root(), "synthdata", "formulas.json")
+    path <- file.path(get_synthdata_dir(), "formulas.json")
   }
   jsonlite::write_json(formulas, path, auto_unbox = TRUE, pretty = TRUE, digits = NA)
 }
@@ -132,7 +125,7 @@ server <- function(input, output, session) {
   }
 
   observeEvent(input$load_btn, {
-    path <- file.path(find_project_root(), "synthdata", "formulas.json")
+    path <- file.path(get_synthdata_dir(), "formulas.json")
     load_from_file(path)
   })
 

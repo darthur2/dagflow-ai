@@ -10,7 +10,49 @@ services:
       - ./synthdata:/workspace/synthdata
     environment:
       - AGENT_MODEL
+      - DAGFLOW_WORKSPACE
       - SSEC_LITELLM_BASE_URL
       - SSEC_LITELLM_API_KEY
       - OPENAI_API_KEY
       - ANTHROPIC_API_KEY
+  web:
+    build: .
+    image: dagflow
+    command: ["node", "web/server.js"]
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/workspace
+    environment:
+      - DAGFLOW_SESSION_ROOT=/tmp/dagflow-sessions
+      - DAGFLOW_IMAGE=dagflow
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+      - worker
+  worker:
+    build: .
+    image: dagflow
+    command: ["node", "web/worker.js"]
+    volumes:
+      - ./:/workspace
+    environment:
+      - DAGFLOW_SESSION_ROOT=/tmp/dagflow-sessions
+      - DAGFLOW_IMAGE=dagflow
+      - REDIS_URL=redis://redis:6379
+      - DAGFLOW_MAX_ACTIVE_JOBS=1
+      - DAGFLOW_SESSION_TTL_MS=86400000
+      - WORKER_HEALTH_PORT=3999
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3999/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "3999:3999"
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
