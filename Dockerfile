@@ -21,6 +21,7 @@ WORKDIR /workspace
 COPY . .
 
 RUN cd .opencode && npm install
+RUN cd web && npm install
 
 COPY opencode-config.json /etc/opencode-config.json
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
