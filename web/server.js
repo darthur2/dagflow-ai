@@ -5,8 +5,10 @@ import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createClient } from 'redis';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(process.cwd(), '..');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT || 3000);
 const SESSION_ROOT = process.env.DAGFLOW_SESSION_ROOT || '/tmp/dagflow-sessions';
 const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379';
