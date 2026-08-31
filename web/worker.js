@@ -1,5 +1,6 @@
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import http from 'node:http';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { createClient } from 'redis';
 
@@ -22,6 +23,22 @@ async function ensureDir(dir) {
 async function getSession(id) {
   const data = await redis.hGetAll(`session:${id}`);
   return Object.keys(data).length ? data : null;
+}
+
+async function readJson(req) {
+  let body = '';
+  for await (const chunk of req) body += chunk;
+  return body ? JSON.parse(body) : {};
+}
+
+function json(res, status, payload) {
+  res.writeHead(status, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(payload));
+}
+
+function text(res, status, body) {
+  res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' });
+  res.end(body);
 }
 
 async function appendLog(id, chunk) {
@@ -130,7 +147,101 @@ async function main() {
     res.end('not found');
   });
 
+  const apiServer = http.createServer(async (req, res) => {
+    const url = new URL(req.url || '/', `http://${req.headers.host}`);
+
+    if (req.method === 'POST' && url.pathname === '/sessions') {
+      try {
+        const body = await readJson(req);
+        const provider = String(body.provider || '').trim();
+        const model = String(body.model || '').trim();
+        const apiKey = String(body.apiKey || '').trim();
+        const description = String(body.description || '').trim();
+        const objectives = String(body.objectives || '').trim();
+        const rows = Number(body.rows || 1000);
+
+        if (!provider || !model || !apiKey) throw new Error('missing required fields');
+        if (!Number.isInteger(rows) || rows <= 0 || rows > 100000) throw new Error('rows must be an integer between 1 and 100000');
+
+        const id = randomUUID();
+        const base = path.join(SESSION_ROOT, id);
+        const session = {
+          id,
+          provider,
+          model,
+          description,
+          objectives,
+          rows: String(rows),
+          createdAt: new Date().toISOString(),
+          status: 'queued',
+          apiKey,
+          workspace: base,
+          manifest: path.join(base, 'manifest.json'),
+          logs: path.join(base, 'logs.txt'),
+          archive: path.join(base, 'synthetic-dataset-package.zip'),
+          expiresAt: String(Date.now() + SESSION_TTL_MS)
+        };
+
+        await ensureDir(path.join(base, 'synthdata'));
+        await writeFile(session.manifest, JSON.stringify({
+          id,
+          provider,
+          model,
+          description,
+          objectives,
+          rows,
+          createdAt: session.createdAt,
+          status: 'queued'
+        }, null, 2));
+
+        await redis.hSet(`session:${id}`, session);
+        await redis.rPush('dagflow:queue', id);
+        json(res, 201, { id });
+      } catch (err) {
+        json(res, 400, { error: err.message });
+      }
+      return;
+    }
+
+    const sessionMatch = url.pathname.match(/^\/sessions\/([^/]+)$/);
+    if (req.method === 'GET' && sessionMatch) {
+      const session = await getSession(sessionMatch[1]);
+      if (!session) return text(res, 404, 'not found');
+      json(res, 200, {
+        id: session.id,
+        provider: session.provider,
+        model: session.model,
+        status: session.status,
+        createdAt: session.createdAt,
+        error: session.error || null,
+        expiresAt: session.expiresAt || null
+      });
+      return;
+    }
+
+    const logMatch = url.pathname.match(/^\/sessions\/([^/]+)\/logs$/);
+    if (req.method === 'GET' && logMatch) {
+      const session = await getSession(logMatch[1]);
+      if (!session) return text(res, 404, 'not found');
+      text(res, 200, (await redis.get(`session:${session.id}:log`)) || '');
+      return;
+    }
+
+    const downloadMatch = url.pathname.match(/^\/sessions\/([^/]+)\/download$/);
+    if (req.method === 'GET' && downloadMatch) {
+      const session = await getSession(downloadMatch[1]);
+      if (!session) return text(res, 404, 'not found');
+      if (session.status !== 'completed') return text(res, 409, 'session not completed');
+      res.writeHead(501, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('download endpoint not wired in this build');
+      return;
+    }
+
+    return text(res, 404, 'not found');
+  });
+
   healthServer.listen(HEALTH_PORT, '0.0.0.0');
+  apiServer.listen(Number(process.env.PORT || 3000), '0.0.0.0');
 
   setInterval(() => {
     drainQueue().catch(() => {});
