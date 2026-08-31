@@ -290,7 +290,7 @@ const server = http.createServer(async (req, res) => {
 
       function syncModels() {
         const options = modelMap[provider.value] || [];
-        model.innerHTML = options.map((v) => `<option value="${v}">${v}</option>`).join('');
+        model.innerHTML = options.map((v) => '<option value="' + v + '">' + v + '</option>').join('');
       }
 
       provider.addEventListener('change', syncModels);
