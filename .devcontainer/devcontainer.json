@@ -7,7 +7,7 @@
   "remoteUser": "root",
   "forwardPorts": [3838],
   "postCreateCommand": "bash -lc 'test -d .opencode && cd .opencode && npm install'",
-  "postStartCommand": "bash -lc 'exec opencode'",
+  "postAttachCommand": "bash -lc 'exec /workspaces/dagflow-ai/bin/codespaces-opencode.sh'",
   "customizations": {
     "vscode": {
       "extensions": [

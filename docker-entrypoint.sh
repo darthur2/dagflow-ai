@@ -5,14 +5,12 @@ CONFIG_DIR="${HOME}/.config/opencode"
 AUTH_DIR="${HOME}/.local/share/opencode"
 mkdir -p "$CONFIG_DIR" "$AUTH_DIR"
 
-if [ ! -f "$CONFIG_DIR/opencode.json" ]; then
-  cp /etc/opencode-config.json "$CONFIG_DIR/opencode.json"
-  if [ -n "$SSEC_LITELLM_BASE_URL" ]; then
-    sed -i "s|\"baseURL\": \".*\"|\"baseURL\": \"${SSEC_LITELLM_BASE_URL}\"|" "$CONFIG_DIR/opencode.json"
-  fi
-  if [ -n "$AGENT_MODEL" ]; then
-    sed -i "s|\"model\": \".*\"|\"model\": \"${AGENT_MODEL}\"|" "$CONFIG_DIR/opencode.json"
-  fi
+cp /etc/opencode-config.json "$CONFIG_DIR/opencode.json"
+if [ -n "$SSEC_LITELLM_BASE_URL" ]; then
+  sed -i "s|\"baseURL\": \".*\"|\"baseURL\": \"${SSEC_LITELLM_BASE_URL}\"|" "$CONFIG_DIR/opencode.json"
+fi
+if [ -n "$AGENT_MODEL" ]; then
+  sed -i "s|\"model\": \".*\"|\"model\": \"${AGENT_MODEL}\"|" "$CONFIG_DIR/opencode.json"
 fi
 
 if [ -n "$SSEC_LITELLM_API_KEY" ]; then
