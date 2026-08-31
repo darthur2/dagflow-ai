@@ -298,20 +298,20 @@ const server = http.createServer(async (req, res) => {
 
       async function refresh() {
         if (!sessionId) return;
-        const statusRes = await fetch(`/sessions/${sessionId}`);
+        const statusRes = await fetch('/sessions/' + sessionId);
         const status = await statusRes.json();
-        meta.textContent = `Session ${status.id}: ${status.status}`;
-        const logRes = await fetch(`/sessions/${sessionId}/logs`);
+        meta.textContent = 'Session ' + status.id + ': ' + status.status;
+        const logRes = await fetch('/sessions/' + sessionId + '/logs');
         log.textContent = await logRes.text();
         if (status.status === 'completed') {
           download.hidden = false;
-          download.href = `/sessions/${sessionId}/download`;
+          download.href = '/sessions/' + sessionId + '/download';
           download.textContent = 'Download package';
           clearInterval(timer);
         }
         if (status.status === 'error') {
           if (status.error) {
-            log.textContent = `${log.textContent}\n\nError: ${status.error}`;
+            log.textContent = log.textContent + '\n\nError: ' + status.error;
           }
           clearInterval(timer);
         }
