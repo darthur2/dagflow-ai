@@ -1,5 +1,7 @@
 # DagFlow — AI-Assisted Synthetic Data Generator
 
+See [`docs/codespaces.md`](docs/codespaces.md) for setup details.
+
 DagFlow lets you create realistic synthetic datasets with known causal structure.
 You describe the kind of data you want, AI agents help you specify the details,
 and an R engine generates the final dataset. Interactive web-based editors let
@@ -77,6 +79,53 @@ follows:
      | Categorical-ordinal | Cumulative logit |
      | Uniform / discrete uniform | Probit |
    - Sampled values are truncated to the variable's declared bounds
+
+---
+
+## Setup (using GitHub Codespaces)
+
+This repo also includes a `.devcontainer/` configuration, so you can open it
+directly in GitHub Codespaces.
+
+### How to start
+
+1. Push the repo to GitHub if it is not there already.
+2. In GitHub, open the repository and click `Code`.
+3. Choose the `Codespaces` tab and create a new codespace.
+4. Wait for the container to build and initialize.
+
+### What you get
+
+- The environment is built from the repo's existing `Dockerfile`.
+- Port `3838` is forwarded automatically for Shiny apps.
+- The `.opencode` workspace dependencies are installed after creation.
+- The codespace starts `opencode` automatically after launch.
+
+### In Codespaces
+
+Set secrets in the Codespaces or repository secret store before opening the
+codespace:
+
+- `AGENT_MODEL` for the model you want to use
+- `SSEC_LITELLM_API_KEY` for `ssec-litellm` models
+- `SSEC_LITELLM_BASE_URL` if you need to override the default LiteLLM endpoint
+- `OPENAI_API_KEY` for OpenAI models
+- `ANTHROPIC_API_KEY` for Anthropic models
+
+If you are using a provider other than `ssec-litellm`, also set `AGENT_MODEL`
+to a supported model name such as `openai/gpt-5.4-mini` or
+`anthropic/claude-sonnet-4-20250514`.
+
+Once the codespace opens, you should land directly in the OpenCode terminal.
+If you want to use the underlying container commands instead, the common entry
+points still work:
+
+```bash
+docker compose run --service-ports dagflow
+```
+
+That is useful if you want to run the pipeline inside a containerized session
+from within Codespaces.
 
 ---
 
