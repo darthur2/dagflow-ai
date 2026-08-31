@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DagFlow</title>
+    <style>
+      body { font-family: Inter, system-ui, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+      main { max-width: 920px; margin: 0 auto; padding: 32px 20px 48px; }
+      .card { background: #111827; border: 1px solid #243041; border-radius: 18px; padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.25); }
+      h1 { margin: 0 0 8px; font-size: 32px; }
+      p.subtle { margin-top: 0; color: #94a3b8; }
+      form { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      label { display: grid; gap: 6px; font-size: 14px; color: #cbd5e1; }
+      input, textarea, select, button { border-radius: 12px; border: 1px solid #334155; background: #0b1220; color: #e2e8f0; padding: 12px 14px; font: inherit; }
+      textarea { min-height: 92px; resize: vertical; }
+      .full { grid-column: 1 / -1; }
+      button { background: linear-gradient(135deg, #2563eb, #7c3aed); border: 0; cursor: pointer; font-weight: 600; }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .panel { margin-top: 18px; padding: 16px; border: 1px solid #243041; border-radius: 14px; background: #0b1220; }
+      pre { white-space: pre-wrap; word-break: break-word; margin: 0; }
+      a { color: #93c5fd; }
+      @media (max-width: 720px) { form { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>DagFlow</h1>
+      <p class="subtle">Create a synthetic dataset package with your own provider API key.</p>
+      <div class="card">
+        <form id="f">
+          <label>
+            Provider
+            <select name="provider" id="provider">
+              <option value="openai">OpenAI</option>
+              <option value="ssec-litellm">SSEC LiteLLM</option>
+              <option value="anthropic">Anthropic</option>
+            </select>
+          </label>
+          <label>
+            Model
+            <select name="model" id="model"></select>
+          </label>
+          <label class="full">
+            API Key
+            <input name="apiKey" type="password" autocomplete="off" />
+          </label>
+          <label class="full">
+            Description
+            <textarea name="description" placeholder="What should the dataset represent?"></textarea>
+          </label>
+          <label class="full">
+            Objectives
+            <textarea name="objectives" placeholder="What should users be able to analyze?"></textarea>
+          </label>
+          <label>
+            Rows
+            <input name="rows" type="number" min="1" max="100000" value="1000" />
+          </label>
+          <div style="display:flex; align-items:end;">
+            <button type="submit" id="submit">Start</button>
+          </div>
+        </form>
+      </div>
+      <div class="panel">
+        <strong id="meta">Ready.</strong>
+        <p><a id="download" hidden>Download package</a></p>
+        <pre id="log"></pre>
+      </div>
+    </main>
+    <script>
+      const modelMap = {
+        'openai': ['gpt-4o', 'gpt-5.4-mini', 'gpt-5.4-nano'],
+        'ssec-litellm': ['gemma-4-31b', 'gpt-5.4-mini', 'kimi-k2-thinking'],
+        'anthropic': ['claude-sonnet-4-20250514']
+      };
+      const f = document.getElementById('f');
+      const provider = document.getElementById('provider');
+      const model = document.getElementById('model');
+      const submit = document.getElementById('submit');
+      const meta = document.getElementById('meta');
+      const log = document.getElementById('log');
+      const download = document.getElementById('download');
+      let sessionId = null;
+      let timer = null;
+
+      function syncModels() {
+        const options = modelMap[provider.value] || [];
+        model.innerHTML = options.map((v) => '<option value="' + v + '">' + v + '</option>').join('');
+      }
+
+      provider.addEventListener('change', syncModels);
+      syncModels();
+
+      async function refresh() {
+        if (!sessionId) return;
+        const statusRes = await fetch('/sessions/' + sessionId);
+        const status = await statusRes.json();
+        meta.textContent = 'Session ' + status.id + ': ' + status.status;
+        const logRes = await fetch('/sessions/' + sessionId + '/logs');
+        log.textContent = await logRes.text();
+        if (status.status === 'completed') {
+          download.hidden = false;
+          download.href = '/sessions/' + sessionId + '/download';
+          download.textContent = 'Download package';
+          clearInterval(timer);
+        }
+        if (status.status === 'error') {
+          if (status.error) {
+            log.textContent = log.textContent + '\n\nError: ' + status.error;
+          }
+          clearInterval(timer);
+        }
+        if (status.status === 'expired') {
+          download.hidden = true;
+          clearInterval(timer);
+        }
+      }
+
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+        submit.disabled = true;
+        const body = Object.fromEntries(new FormData(f).entries());
+        body.rows = Number(body.rows || 1000);
+        try {
+          const res = await fetch('/sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+          const payload = await res.json();
+          if (!res.ok) {
+            throw new Error(payload.error || 'failed to start session');
+          }
+          sessionId = payload.id;
+          meta.textContent = 'Session ' + payload.id + ': queued';
+          download.hidden = true;
+          log.textContent = '';
+          clearInterval(timer);
+          timer = setInterval(refresh, 2000);
+          refresh();
+        } catch (err) {
+          meta.textContent = err.message;
+        } finally {
+          submit.disabled = false;
+        }
+      };
+    </script>
+  </body>
+</html>
