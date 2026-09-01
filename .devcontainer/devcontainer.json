@@ -14,5 +14,22 @@
         "reditorsupport.r"
       ]
     }
+  },
+  "secrets": {
+    "AGENT_MODEL": {
+      "description": "Model to use (e.g., gpt-5.4-mini, gemma-4-31b). Provider is inferred from the API key."
+    },
+    "SSEC_LITELLM_API_KEY": {
+      "description": "API key for ssec-litellm models."
+    },
+    "SSEC_LITELLM_BASE_URL": {
+      "description": "Override the default ssec-litellm base URL (optional)."
+    },
+    "OPENAI_API_KEY": {
+      "description": "API key for OpenAI models (optional)."
+    },
+    "ANTHROPIC_API_KEY": {
+      "description": "API key for Anthropic models (optional)."
+    }
   }
 }
