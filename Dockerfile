@@ -1,9 +1,13 @@
 FROM rocker/r-ver:4.5.2
 
 RUN apt-get update && apt-get install -y \
+    build-essential \
     curl \
     git \
+    libcurl4-openssl-dev \
+    libssl-dev \
     libuv1-dev \
+    libxml2-dev \
     lsof \
     zlib1g-dev \
     pkg-config \
