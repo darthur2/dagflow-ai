@@ -106,15 +106,16 @@ directly in GitHub Codespaces.
 Set secrets in the Codespaces or repository secret store before opening the
 codespace:
 
-- `AGENT_MODEL` for the model you want to use
+- `AGENT_MODEL` for the model you want to use (e.g., `gpt-5.4-mini`, `gemma-4-31b`)
 - `SSEC_LITELLM_API_KEY` for `ssec-litellm` models
 - `SSEC_LITELLM_BASE_URL` if you need to override the default LiteLLM endpoint
 - `OPENAI_API_KEY` for OpenAI models
 - `ANTHROPIC_API_KEY` for Anthropic models
 
-If you are using a provider other than `ssec-litellm`, also set `AGENT_MODEL`
-to a supported model name such as `openai/gpt-5.4-mini` or
-`anthropic/claude-sonnet-4-20250514`.
+`AGENT_MODEL` accepts bare model names — the provider is automatically inferred
+from whichever API key is set (e.g., `AGENT_MODEL=gpt-5.4-mini` with
+`SSEC_LITELLM_API_KEY` resolves to `ssec-litellm/gpt-5.4-mini`). You can also
+use fully qualified names like `openai/gpt-5.4-mini` to override the inference.
 
 Once the codespace opens, you should land directly in the OpenCode terminal.
 If you want to use the underlying container commands instead, the common entry
@@ -205,7 +206,7 @@ time; subsequent builds are faster.
 
 ### 3. (Optional) Get API keys for non-default models
 
-The default model (`opencode/deepseek-v4-flash-free`) is free and requires
+The default model (`opencode/mimo-v2.5-free`) is free and requires
 no API key. You can run the pipeline without any keys.
 
 If you want to use a different model, you'll need an API key for its provider:
@@ -218,7 +219,7 @@ Contact your administrator or service provider to obtain one.
 
 ### 4. Run the pipeline
 
-The default model is `opencode/deepseek-v4-flash-free` — free and requires no API key.
+The default model is `opencode/mimo-v2.5-free` — free and requires no API key.
 
 ```bash
 docker compose run --service-ports dagflow
@@ -232,17 +233,24 @@ during the pipeline are accessible in your browser. The `docker-compose.yml`
 also mounts the `synthdata/` directory so generated files persist on your
 host — no extra flags needed for that.
 
-To use a **different model**, set `AGENT_MODEL` alongside the matching API key:
+To use a **different model**, set `AGENT_MODEL` with the matching API key.
+The provider is inferred from the API key — no need to prefix the model name:
 
 ```bash
 # Gemma 4 via ssec-litellm
-AGENT_MODEL=ssec-litellm/gemma-4-31b SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow
+AGENT_MODEL=gemma-4-31b SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow
 
 # GPT-5.4 Mini via OpenAI
-AGENT_MODEL=openai/gpt-5.4-mini OPENAI_API_KEY=your_key_here docker compose run --service-ports dagflow
+AGENT_MODEL=gpt-5.4-mini OPENAI_API_KEY=your_key_here docker compose run --service-ports dagflow
 
 # Claude via Anthropic
-AGENT_MODEL=anthropic/claude-sonnet-4-20250514 ANTHROPIC_API_KEY=your_key_here docker compose run --service-ports dagflow
+AGENT_MODEL=claude-sonnet-4-20250514 ANTHROPIC_API_KEY=your_key_here docker compose run --service-ports dagflow
+```
+
+Fully qualified names are also accepted if you want to be explicit:
+
+```bash
+AGENT_MODEL=ssec-litellm/gemma-4-31b SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow
 ```
 
 ---
@@ -255,10 +263,11 @@ When you run the container, you can specify a command:
 docker compose run --service-ports dagflow [command]
 ```
 
-Set `AGENT_MODEL` to choose a non-default model for the AI subagents:
+Set `AGENT_MODEL` to choose a non-default model for the AI subagents.
+The provider is inferred from the API key:
 
 ```bash
-AGENT_MODEL=ssec-litellm/gemma-4-31b SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow [command]
+AGENT_MODEL=gemma-4-31b SSEC_LITELLM_API_KEY=your_key_here docker compose run --service-ports dagflow [command]
 ```
 
 | Command | What it does |

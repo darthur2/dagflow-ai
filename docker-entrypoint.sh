@@ -10,7 +10,19 @@ if [ -n "$SSEC_LITELLM_BASE_URL" ]; then
   sed -i "s|\"baseURL\": \".*\"|\"baseURL\": \"${SSEC_LITELLM_BASE_URL}\"|" "$CONFIG_DIR/opencode.json"
 fi
 if [ -n "$AGENT_MODEL" ]; then
-  sed -i "s|\"model\": \".*\"|\"model\": \"${AGENT_MODEL}\"|" "$CONFIG_DIR/opencode.json"
+  MODEL="${AGENT_MODEL}"
+  if [[ "$MODEL" != *"/"* ]]; then
+    if [ -n "$SSEC_LITELLM_API_KEY" ]; then
+      MODEL="ssec-litellm/${MODEL}"
+    elif [ -n "$OPENAI_API_KEY" ]; then
+      MODEL="openai/${MODEL}"
+    elif [ -n "$ANTHROPIC_API_KEY" ]; then
+      MODEL="anthropic/${MODEL}"
+    else
+      MODEL="opencode/${MODEL}"
+    fi
+  fi
+  sed -i "s|\"model\": \".*\"|\"model\": \"${MODEL}\"|" "$CONFIG_DIR/opencode.json"
 fi
 
 if [ -n "$SSEC_LITELLM_API_KEY" ]; then
@@ -65,12 +77,14 @@ Persistence:
   Use -v or --mount to share synthdata/ between commands:
     docker run -it -v dagflow-data:/workspace/synthdata ... dagflow
 
-No env vars required by default (uses the free `opencode/deepseek-v4-flash-free` model).
+No env vars required by default (uses the free `opencode/mimo-v2.5-free` model).
 
 Optional env vars:
-  AGENT_MODEL            Override default model for all subagents (e.g., ssec-litellm/gemma-4-31b)
+  AGENT_MODEL            Model to use (e.g., gpt-5.4-mini, gemma-4-31b).
+                         Provider is inferred from the API key, or use a fully
+                         qualified name like openai/gpt-5.4-mini.
   SSEC_LITELLM_BASE_URL  Override default ssec-litellm base URL
-  SSEC_LITELLM_API_KEY   API key for ssec-litellm (required when using an ssec-litellm model)
+  SSEC_LITELLM_API_KEY   API key for ssec-litellm
   OPENAI_API_KEY         API key for OpenAI
   ANTHROPIC_API_KEY      API key for Anthropic
 USAGE

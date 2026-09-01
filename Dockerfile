@@ -13,7 +13,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-RUN R -e "install.packages(c('shiny', 'jsonlite', 'ggplot2', 'visNetwork', 'nleqslv', 'testthat'), repos='https://cloud.r-project.org', Ncpus=4)"
+RUN R -e "install.packages(c('shiny', 'jsonlite', 'ggplot2', 'visNetwork', 'nleqslv', 'testthat', 'languageserver'), repos='https://cloud.r-project.org', Ncpus=4)"
 
 RUN npm install -g opencode-ai@1.15.13
 

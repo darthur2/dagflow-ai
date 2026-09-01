@@ -13,7 +13,19 @@ if [ -f "$ROOT/opencode-config.json" ]; then
     sed -i "s|\"baseURL\": \".*\"|\"baseURL\": \"${SSEC_LITELLM_BASE_URL}\"|" "$CONFIG_DIR/opencode.json"
   fi
   if [ -n "${AGENT_MODEL:-}" ]; then
-    sed -i "s|\"model\": \".*\"|\"model\": \"${AGENT_MODEL}\"|" "$CONFIG_DIR/opencode.json"
+    MODEL="${AGENT_MODEL}"
+    if [[ "$MODEL" != *"/"* ]]; then
+      if [ -n "${SSEC_LITELLM_API_KEY:-}" ]; then
+        MODEL="ssec-litellm/${MODEL}"
+      elif [ -n "${OPENAI_API_KEY:-}" ]; then
+        MODEL="openai/${MODEL}"
+      elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+        MODEL="anthropic/${MODEL}"
+      else
+        MODEL="opencode/${MODEL}"
+      fi
+    fi
+    sed -i "s|\"model\": \".*\"|\"model\": \"${MODEL}\"|" "$CONFIG_DIR/opencode.json"
   fi
 fi
 
