@@ -41,6 +41,23 @@ def render_details(selected_name: str, data: dict) -> None:
             right.write(item[field_name])
 
 
+def render_distribution_details(selected_name: str, distributions: dict) -> None:
+    item = distributions[selected_name]
+    st.subheader(selected_name)
+    st.write(f"Distribution: {item.get('distribution', 'Unknown')}")
+
+    parameters = item.get("parameters", {})
+    if not parameters:
+        st.info("No parameters defined for this distribution.")
+        return
+
+    st.write("Parameters")
+    for field_name, field_value in parameters.items():
+        left, right = st.columns([1, 3])
+        left.write(field_name)
+        right.write(field_value)
+
+
 def render_dag(dag_data: dict) -> None:
     nodes = []
     for node_id, node_data in dag_data["nodes"].items():
@@ -100,9 +117,9 @@ with tabs[2]:
     if distributions_data is None:
         st.info("Distributions have not been created yet.")
     else:
-        distributions = distributions_data["distributions"]
+        distributions = distributions_data
         distribution_name = st.selectbox("Select a variable", sorted(distributions.keys()), key="distribution_select")
-        render_details(distribution_name, distributions)
+        render_distribution_details(distribution_name, distributions)
 
 with tabs[3]:
     st.header("Formulas")
