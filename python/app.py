@@ -8,13 +8,15 @@ from streamlit_agraph import Config, Edge, Node, agraph
 from scipy import stats
 
 
-st.set_page_config(page_title="DagFlow", layout="wide")
+st.set_page_config(page_title="DagFlow-AI", layout="wide")
 
 variables_path = Path(__file__).resolve().parent.parent / "synthdata" / "variables.json"
 
 dag_path = Path(__file__).resolve().parent.parent / "synthdata" / "dag.json"
 
 distributions_path = Path(__file__).resolve().parent.parent / "synthdata" / "distributions.json"
+
+formulas_path = Path(__file__).resolve().parent.parent / "synthdata" / "formulas.json"
 
 
 def load_json(path: Path):
@@ -68,6 +70,151 @@ def render_distribution_details(selected_name: str, distributions: dict) -> None
             st.info("No chart available for this distribution.")
         else:
             st.altair_chart(chart, use_container_width=True)
+
+
+def format_predictor(predictor: dict) -> str:
+    predictor_name = predictor.get("name_of_predictor", "Unknown predictor")
+    if "coefficients" in predictor:
+        categories = predictor.get("category_names", [])
+        parts = [f"{category}: {coefficient}" for category, coefficient in zip(categories, predictor.get("coefficients", []))]
+        reference_category = predictor.get("reference_category")
+        if reference_category:
+            return f"{predictor_name} (reference: {reference_category}) -> " + ", ".join(parts)
+        return f"{predictor_name} -> " + ", ".join(parts)
+
+    coefficient = predictor.get("coefficient", "Unknown")
+    transformation = predictor.get("transformation", "none")
+    if transformation and transformation != "none":
+        return f"{predictor_name}: coefficient {coefficient}, transformation {transformation}"
+    return f"{predictor_name}: coefficient {coefficient}"
+
+
+def render_field_value(field_name: str, field_value) -> None:
+    left_col, right_col = st.columns([1, 1.4])
+    left_col.write(field_name)
+    right_col.write(field_value)
+
+
+def render_section_title(title: str) -> None:
+    st.write(title)
+
+
+def render_predictor_fields(predictors: list, response_name: str) -> None:
+    if not predictors:
+        st.info("No predictors defined.")
+        return
+
+    predictor_labels = [predictor.get("name_of_predictor", "Unknown predictor") for predictor in predictors]
+    selected_predictor_label = st.selectbox("Select a predictor", predictor_labels, key=f"predictor_select_{response_name}")
+    selected_predictor = next(
+        (predictor for predictor, label in zip(predictors, predictor_labels) if label == selected_predictor_label),
+        predictors[0],
+    )
+
+    render_section_title(selected_predictor.get("name_of_predictor", "Unknown predictor"))
+
+    if "coefficients" in selected_predictor:
+        render_field_value("Type", "categorical predictor")
+        render_field_value("Reference category", selected_predictor.get("reference_category", "Unknown"))
+        category_names = selected_predictor.get("category_names", [])
+        coefficients = selected_predictor.get("coefficients", [])
+        for category_name, coefficient in zip(category_names, coefficients):
+            render_field_value(category_name, coefficient)
+    else:
+        render_field_value("Type", "quantitative predictor")
+        render_field_value("Coefficient", selected_predictor.get("coefficient", "Unknown"))
+        render_field_value("Transformation", selected_predictor.get("transformation", "none"))
+
+
+def render_formula_metadata(formula: dict) -> None:
+    if "intercept" in formula and "predictors" in formula:
+        render_field_value("Formula type", "quantitative")
+        render_field_value("Intercept", formula["intercept"])
+        render_field_value("SNR", formula.get("snr", "Unknown"))
+        transformation = formula.get("transformation", "none")
+        if transformation != "none":
+            render_field_value("Response transformation", transformation)
+        return
+
+    if "thresholds" in formula and "predictors" in formula:
+        render_field_value("Formula type", "categorical ordinal")
+        render_field_value("Reference category", formula.get("reference_category", "Unknown"))
+        render_field_value("SNR", formula.get("snr", "Unknown"))
+        thresholds = formula.get("thresholds", [])
+        if thresholds:
+            render_section_title("Thresholds")
+            for idx, threshold in enumerate(thresholds, start=1):
+                render_field_value(f"Threshold {idx}", threshold.get("threshold", "Unknown"))
+        else:
+            st.info("No thresholds defined.")
+        return
+
+    if "intercepts" in formula and "formulas" in formula:
+        render_field_value("Formula type", "categorical nominal")
+        render_field_value("Reference category", formula.get("reference_category", "Unknown"))
+        render_field_value("SNR", formula.get("snr", "Unknown"))
+        return
+
+
+def render_formula_block(formula: dict) -> None:
+    response_name = formula.get("response_variable_name", "Unknown")
+    left, right = st.columns([1, 1.4])
+
+    with left:
+        st.subheader(response_name)
+        render_formula_metadata(formula)
+
+        if "intercept" in formula and "predictors" in formula:
+            render_section_title("Predictors")
+            render_predictor_fields(formula.get("predictors", []), response_name)
+            return
+
+        if "thresholds" in formula and "predictors" in formula:
+            render_section_title("Predictors")
+            render_predictor_fields(formula.get("predictors", []), response_name)
+            return
+
+        if "intercepts" in formula and "formulas" in formula:
+            category_names = formula.get("category_names", [])
+            intercepts = formula.get("intercepts", [])
+            formulas = formula.get("formulas", [])
+            if not category_names or not formulas:
+                st.info("No category-specific formulas available.")
+                return
+
+            selected_category = st.selectbox(
+                "Select a response category",
+                category_names,
+                key=f"nominal_formula_{response_name}",
+            )
+            category_index = category_names.index(selected_category)
+            render_field_value("Selected category", selected_category)
+            if category_index < len(intercepts):
+                render_field_value("Intercept", intercepts[category_index])
+
+            category_formula = formulas[category_index] if category_index < len(formulas) else []
+            render_section_title("Predictors")
+            render_predictor_fields(category_formula, f"{response_name}_{selected_category}")
+            return
+
+        st.info("Unsupported formula format.")
+
+    with right:
+        if "intercept" in formula and "predictors" in formula:
+            st.write("Summary")
+            st.write(f"{response_name} is modeled as a quantitative response with {len(formula.get('predictors', []))} predictor(s).")
+        elif "thresholds" in formula and "predictors" in formula:
+            st.write("Summary")
+            st.write(f"{response_name} is modeled as an ordinal response with {len(formula.get('thresholds', [])) + 1} categories.")
+        elif "intercepts" in formula and "formulas" in formula:
+            st.write("Summary")
+            st.write(f"{response_name} is modeled as a nominal response with category-specific formulas.")
+
+
+def render_formulas_tab(formulas_data) -> None:
+    formulas_by_name = {item["response_variable_name"]: item for item in formulas_data}
+    response_name = st.selectbox("Select a variable", sorted(formulas_by_name.keys()), key="formula_select")
+    render_formula_block(formulas_by_name[response_name])
 
 
 def build_distribution_chart(item: dict):
@@ -314,12 +461,11 @@ with tabs[2]:
 
 with tabs[3]:
     st.header("Formulas")
-    formulas_path = Path(__file__).resolve().parent.parent / "synthdata" / "formulas.json"
     formulas_data = load_json(formulas_path)
     if formulas_data is None:
         st.info("Formulas have not been created yet.")
     else:
-        st.write("Formulas loaded.")
+        render_formulas_tab(formulas_data)
 
 with tabs[4]:
     st.header("Data")
