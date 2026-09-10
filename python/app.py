@@ -10,6 +10,17 @@ from scipy import stats
 
 st.set_page_config(page_title="DagFlow-AI", layout="wide")
 
+st.markdown(
+    """
+    <style>
+    .block-container {
+        padding-top: 0.8rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 variables_path = Path(__file__).resolve().parent.parent / "synthdata" / "variables.json"
 
 dag_path = Path(__file__).resolve().parent.parent / "synthdata" / "dag.json"
@@ -26,6 +37,15 @@ def load_json(path: Path):
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
+
+def prettify_text(value: str) -> str:
+    if not isinstance(value, str):
+        return str(value)
+
+    pretty = value.replace("_", " ").replace("(", " ( ").replace(")", " ) ")
+    pretty = " ".join(part for part in pretty.split() if part)
+    return pretty.title()
+
 st.title("DagFlow")
 
 tabs = st.tabs(["Variables", "DAG", "Distributions", "Formulas", "Data"])
@@ -33,17 +53,36 @@ tabs = st.tabs(["Variables", "DAG", "Distributions", "Formulas", "Data"])
 
 def render_details(selected_name: str, data: dict) -> None:
     item = data[selected_name]
-    st.subheader(selected_name)
 
-    field_order = ["description", "justification", "effect_type", "measurement_level"]
-    if "classification" in item:
-        field_order.extend(["classification", "skew"])
+    field_order = ["name", "description", "justification", "effect_type", "measurement_level", "classification", "skew"]
 
     for field_name in field_order:
         if field_name in item:
             left, right = st.columns([1, 3])
-            left.write(field_name)
-            right.write(item[field_name])
+            left.write(prettify_text(field_name))
+            right.write(prettify_text(item[field_name]))
+
+
+def render_variable_tab(variables_data) -> None:
+    variable_names = sorted(variables_data.keys())
+    selected_label_to_name = {prettify_text(name): name for name in variable_names}
+    selected_label = st.selectbox("Select a variable", sorted(selected_label_to_name.keys()), key="variable_select")
+    variable_name = selected_label_to_name[selected_label]
+    render_details(variable_name, variables_data)
+
+
+def render_distribution_selector(distributions: dict) -> str:
+    distribution_names = sorted(distributions.keys())
+    selected_label_to_name = {prettify_text(name): name for name in distribution_names}
+    selected_label = st.selectbox("Select a variable", sorted(selected_label_to_name.keys()), key="distribution_select")
+    return selected_label_to_name[selected_label]
+
+
+def render_category_probability_table(categories: list, probabilities: list) -> None:
+    rows = []
+    for category, probability in zip(categories, probabilities):
+        rows.append({"Category": prettify_text(category), "Probability": format_numeric_value(probability)})
+    st.table(rows)
 
 
 def render_distribution_details(selected_name: str, distributions: dict) -> None:
@@ -51,18 +90,24 @@ def render_distribution_details(selected_name: str, distributions: dict) -> None
     left, right = st.columns([1, 1.4])
 
     with left:
-        st.subheader(selected_name)
-        st.write(f"Distribution: {item.get('distribution', 'Unknown')}")
+        st.write(f"Distribution: {prettify_text(item.get('distribution', 'Unknown'))}")
 
-        parameters = item.get("parameters", {})
+        parameters = {key: value for key, value in item.items() if key != "distribution"}
         if not parameters:
             st.info("No parameters defined for this distribution.")
         else:
-            st.write("Parameters")
             for field_name, field_value in parameters.items():
+                if field_name == "categories" and isinstance(field_value, list):
+                    probabilities = parameters.get("probabilities", [])
+                    render_category_probability_table(field_value, probabilities)
+                    continue
+
+                if field_name == "probabilities" and isinstance(field_value, list):
+                    continue
+
                 left_col, right_col = st.columns([1, 3])
-                left_col.write(field_name)
-                right_col.write(field_value)
+                left_col.write(prettify_text(field_name))
+                right_col.write(prettify_text(field_value))
 
     with right:
         chart = build_distribution_chart(item)
@@ -72,154 +117,294 @@ def render_distribution_details(selected_name: str, distributions: dict) -> None
             st.altair_chart(chart, use_container_width=True)
 
 
-def format_predictor(predictor: dict) -> str:
-    predictor_name = predictor.get("name_of_predictor", "Unknown predictor")
-    if "coefficients" in predictor:
-        categories = predictor.get("category_names", [])
-        parts = [f"{category}: {coefficient}" for category, coefficient in zip(categories, predictor.get("coefficients", []))]
-        reference_category = predictor.get("reference_category")
-        if reference_category:
-            return f"{predictor_name} (reference: {reference_category}) -> " + ", ".join(parts)
-        return f"{predictor_name} -> " + ", ".join(parts)
-
-    coefficient = predictor.get("coefficient", "Unknown")
-    transformation = predictor.get("transformation", "none")
-    if transformation and transformation != "none":
-        return f"{predictor_name}: coefficient {coefficient}, transformation {transformation}"
-    return f"{predictor_name}: coefficient {coefficient}"
-
-
 def render_field_value(field_name: str, field_value) -> None:
     left_col, right_col = st.columns([1, 1.4])
-    left_col.write(field_name)
-    right_col.write(field_value)
+    label = "SNR" if field_name.lower() == "snr" else prettify_text(field_name)
+    left_col.write(label)
+    right_col.write(prettify_text(field_value))
 
 
 def render_section_title(title: str) -> None:
-    st.write(title)
+    st.write(prettify_text(title))
 
 
-def render_predictor_fields(predictors: list, response_name: str) -> None:
+def render_nested_value(value, indent: int = 0) -> None:
+    if isinstance(value, dict):
+        for key, nested_value in value.items():
+            if isinstance(nested_value, (dict, list)):
+                st.write(" " * indent + str(key))
+                render_nested_value(nested_value, indent + 2)
+            else:
+                render_field_value(" " * indent + str(key), nested_value)
+        return
+
+    if isinstance(value, list):
+        for idx, item in enumerate(value, start=1):
+            if isinstance(item, (dict, list)):
+                st.write(" " * indent + f"Item {idx}")
+                render_nested_value(item, indent + 2)
+            else:
+                render_field_value(" " * indent + f"Item {idx}", item)
+        return
+
+    st.write(" " * indent + str(value))
+
+
+def render_predictor_block(predictor_name: str, predictor: dict) -> None:
+    if not predictor:
+        st.info("No predictor details available.")
+        return
+
+    if "coefficient" in predictor:
+        render_field_value("Coefficient", predictor.get("coefficient", "Unknown"))
+        transformation = predictor.get("transformation")
+        if transformation and transformation != "none":
+            render_field_value("Transformation", transformation)
+        return
+
+    if "reference_category" in predictor and "other_categories" in predictor:
+        render_field_value("Reference Category", predictor.get("reference_category", "Unknown"))
+        other_categories = predictor.get("other_categories", {})
+        if other_categories:
+            rows = []
+            for category_name, category_data in other_categories.items():
+                rows.append(
+                    {
+                        "Other Categories": prettify_text(category_name),
+                        "Coefficient": format_numeric_value(category_data.get("coefficient", "Unknown")),
+                    }
+                )
+            st.table(rows)
+        return
+
+    for field_name, field_value in predictor.items():
+        if isinstance(field_value, (dict, list)):
+            render_section_title(field_name)
+            render_nested_value(field_value)
+        else:
+            render_field_value(field_name, field_value)
+
+
+def format_term_name(name: str, transformation: str | None = None) -> str:
+    if transformation and transformation != "none":
+        return f"{transformation}({name})"
+    return name
+
+
+def format_numeric_value(value) -> str:
+    return f"{value:.3g}" if isinstance(value, (int, float)) else str(value)
+
+
+def format_formula_terms(terms: list[str]) -> str:
+    if not terms:
+        return "0"
+
+    formatted = [terms[0]]
+    for term in terms[1:]:
+        if term.startswith("-"):
+            formatted.append(f"- {term[1:]}")
+        else:
+            formatted.append(f"+ {term}")
+    return " ".join(formatted)
+
+
+def format_formula_multiline(formula_text: str) -> str:
+    parts = formula_text.split(" ~ ", 1)
+    if len(parts) != 2:
+        return formula_text
+
+    left_side, right_side = parts
+    if len(formula_text) <= 90:
+        return formula_text
+
+    terms = right_side.split(" + ")
+    if len(terms) == 1:
+        return formula_text
+
+    lines = [f"{left_side} ~ {terms[0]}"]
+    for term in terms[1:]:
+        if term.startswith("- "):
+            lines.append(f"  - {term[2:]}")
+        else:
+            lines.append(f"  + {term}")
+    return "\n".join(lines)
+
+
+def expand_predictors_for_display(predictors: dict) -> list[str]:
+    terms = []
+    for predictor_name, predictor in predictors.items():
+        if "coefficient" in predictor:
+            transformed_name = format_term_name(predictor_name, predictor.get("transformation"))
+            terms.append(f"{transformed_name} * {format_numeric_value(predictor['coefficient'])}")
+            continue
+
+        if "reference_category" in predictor and "other_categories" in predictor:
+            for category_name, category_data in predictor.get("other_categories", {}).items():
+                terms.append(f"I({predictor_name} = {category_name}) * {format_numeric_value(category_data['coefficient'])}")
+    return terms
+
+
+def build_formula_string(response_name: str, formula: dict, distributions: dict, selected_category: str | None = None) -> str:
+    distribution_name = distributions.get(response_name, {}).get("distribution", "")
+
+    if "intercept" in formula and "predictors" in formula:
+        terms = [format_numeric_value(formula.get("intercept", "0"))]
+        terms.extend(expand_predictors_for_display(formula.get("predictors", {})))
+        return f"{response_name} ~ " + format_formula_terms(terms)
+
+    if "reference_category" in formula and "other_categories" in formula:
+        category_name = selected_category or next(iter(formula.get("other_categories", {}).keys()), None)
+        if category_name is None:
+            return f"{response_name} ~ Unknown"
+
+        category_block = formula["other_categories"][category_name]
+        terms = [format_numeric_value(category_block.get("intercept", "0"))]
+        terms.extend(expand_predictors_for_display(formula.get("predictors", {})))
+        if "predictors" in category_block:
+            terms.extend(expand_predictors_for_display(category_block.get("predictors", {})))
+        return f"{response_name} ~ " + format_formula_terms(terms)
+
+    return f"{response_name} ~ Unknown"
+
+
+def render_formula_box(title: str, formula_text: str) -> None:
+    st.subheader(title)
+    st.code(format_formula_multiline(formula_text), language="text")
+
+
+def render_section_header(title: str) -> None:
+    st.markdown(f"<div style='margin-top: 0.75rem; margin-bottom: 0.35rem;'><h3 style='margin: 0;'>{prettify_text(title)}</h3></div>", unsafe_allow_html=True)
+    st.divider()
+
+
+def render_predictor_selector(predictors: dict, response_name: str, category_name: str | None = None) -> None:
     if not predictors:
         st.info("No predictors defined.")
         return
 
-    predictor_labels = [predictor.get("name_of_predictor", "Unknown predictor") for predictor in predictors]
-    selected_predictor_label = st.selectbox("Select a predictor", predictor_labels, key=f"predictor_select_{response_name}")
-    selected_predictor = next(
-        (predictor for predictor, label in zip(predictors, predictor_labels) if label == selected_predictor_label),
-        predictors[0],
-    )
-
-    render_section_title(selected_predictor.get("name_of_predictor", "Unknown predictor"))
-
-    if "coefficients" in selected_predictor:
-        render_field_value("Type", "categorical predictor")
-        render_field_value("Reference category", selected_predictor.get("reference_category", "Unknown"))
-        category_names = selected_predictor.get("category_names", [])
-        coefficients = selected_predictor.get("coefficients", [])
-        for category_name, coefficient in zip(category_names, coefficients):
-            render_field_value(category_name, coefficient)
-    else:
-        render_field_value("Type", "quantitative predictor")
-        render_field_value("Coefficient", selected_predictor.get("coefficient", "Unknown"))
-        render_field_value("Transformation", selected_predictor.get("transformation", "none"))
+    predictor_names = sorted(predictors.keys())
+    key_suffix = f"_{response_name}"
+    if category_name is not None:
+        key_suffix += f"_{category_name}"
+    predictor_label_to_name = {prettify_text(name): name for name in predictor_names}
+    selected_predictor_label = st.selectbox("Select a predictor", sorted(predictor_label_to_name.keys()), key=f"predictor_select{key_suffix}")
+    selected_predictor = predictor_label_to_name[selected_predictor_label]
+    render_predictor_block(selected_predictor, predictors[selected_predictor])
 
 
-def render_formula_metadata(formula: dict) -> None:
-    if "intercept" in formula and "predictors" in formula:
-        render_field_value("Formula type", "quantitative")
-        render_field_value("Intercept", formula["intercept"])
-        render_field_value("SNR", formula.get("snr", "Unknown"))
-        transformation = formula.get("transformation", "none")
-        if transformation != "none":
-            render_field_value("Response transformation", transformation)
-        return
-
-    if "thresholds" in formula and "predictors" in formula:
-        render_field_value("Formula type", "categorical ordinal")
-        render_field_value("Reference category", formula.get("reference_category", "Unknown"))
-        render_field_value("SNR", formula.get("snr", "Unknown"))
-        thresholds = formula.get("thresholds", [])
-        if thresholds:
-            render_section_title("Thresholds")
-            for idx, threshold in enumerate(thresholds, start=1):
-                render_field_value(f"Threshold {idx}", threshold.get("threshold", "Unknown"))
-        else:
-            st.info("No thresholds defined.")
-        return
-
-    if "intercepts" in formula and "formulas" in formula:
-        render_field_value("Formula type", "categorical nominal")
-        render_field_value("Reference category", formula.get("reference_category", "Unknown"))
-        render_field_value("SNR", formula.get("snr", "Unknown"))
-        return
-
-
-def render_formula_block(formula: dict) -> None:
-    response_name = formula.get("response_variable_name", "Unknown")
+def render_quantitative_formula(response_name: str, formula: dict, distributions: dict) -> None:
     left, right = st.columns([1, 1.4])
 
     with left:
-        st.subheader(response_name)
-        render_formula_metadata(formula)
-
-        if "intercept" in formula and "predictors" in formula:
-            render_section_title("Predictors")
-            render_predictor_fields(formula.get("predictors", []), response_name)
-            return
-
-        if "thresholds" in formula and "predictors" in formula:
-            render_section_title("Predictors")
-            render_predictor_fields(formula.get("predictors", []), response_name)
-            return
-
-        if "intercepts" in formula and "formulas" in formula:
-            category_names = formula.get("category_names", [])
-            intercepts = formula.get("intercepts", [])
-            formulas = formula.get("formulas", [])
-            if not category_names or not formulas:
-                st.info("No category-specific formulas available.")
-                return
-
-            selected_category = st.selectbox(
-                "Select a response category",
-                category_names,
-                key=f"nominal_formula_{response_name}",
-            )
-            category_index = category_names.index(selected_category)
-            render_field_value("Selected category", selected_category)
-            if category_index < len(intercepts):
-                render_field_value("Intercept", intercepts[category_index])
-
-            category_formula = formulas[category_index] if category_index < len(formulas) else []
-            render_section_title("Predictors")
-            render_predictor_fields(category_formula, f"{response_name}_{selected_category}")
-            return
-
-        st.info("Unsupported formula format.")
+        render_section_header("General Info")
+        render_field_value("Formula Type", "Quantitative")
+        render_field_value("Intercept", formula.get("intercept", "Unknown"))
+        render_field_value("Transformation", formula.get("transformation", "none"))
+        render_field_value("SNR", formula.get("snr", "Unknown"))
+        render_section_header("Predictors")
+        render_predictor_selector(formula.get("predictors", {}), response_name)
 
     with right:
-        if "intercept" in formula and "predictors" in formula:
-            st.write("Summary")
-            st.write(f"{response_name} is modeled as a quantitative response with {len(formula.get('predictors', []))} predictor(s).")
-        elif "thresholds" in formula and "predictors" in formula:
-            st.write("Summary")
-            st.write(f"{response_name} is modeled as an ordinal response with {len(formula.get('thresholds', [])) + 1} categories.")
-        elif "intercepts" in formula and "formulas" in formula:
-            st.write("Summary")
-            st.write(f"{response_name} is modeled as a nominal response with category-specific formulas.")
+        render_formula_box("Formula", build_formula_string(response_name, formula, distributions))
 
 
-def render_formulas_tab(formulas_data) -> None:
-    formulas_by_name = {item["response_variable_name"]: item for item in formulas_data}
-    response_name = st.selectbox("Select a variable", sorted(formulas_by_name.keys()), key="formula_select")
-    render_formula_block(formulas_by_name[response_name])
+def render_nominal_formula(response_name: str, formula: dict, distributions: dict) -> None:
+    categories = formula.get("other_categories", {})
+    category_names = sorted(categories.keys())
+
+    left, right = st.columns([1, 1.4])
+
+    with left:
+        render_section_header("General Info")
+        render_field_value("Formula Type", "Categorical Nominal")
+        render_field_value("Reference Category", formula.get("reference_category", "Unknown"))
+
+        if not category_names:
+            st.info("No response categories defined.")
+            return
+
+        render_section_header("Category Details")
+        category_label_to_name = {prettify_text(name): name for name in category_names}
+        selected_category_label = st.selectbox(
+            "Select a response category",
+            sorted(category_label_to_name.keys()),
+            key=f"nominal_category_select_{response_name}",
+        )
+        selected_category = category_label_to_name[selected_category_label]
+        category_block = categories[selected_category]
+        render_field_value("Intercept", category_block.get("intercept", "Unknown"))
+
+        render_section_header("Predictors")
+        render_predictor_selector(category_block.get("predictors", {}), response_name, selected_category)
+
+    with right:
+        render_formula_box("Formula", build_formula_string(response_name, formula, distributions, selected_category))
+
+
+def render_ordinal_formula(response_name: str, formula: dict, distributions: dict) -> None:
+    categories = formula.get("other_categories", {})
+    category_names = sorted(categories.keys())
+
+    left, right = st.columns([1, 1.4])
+
+    with left:
+        render_section_header("General Info")
+        render_field_value("Formula Type", "Categorical Ordinal")
+        render_field_value("Reference Category", formula.get("reference_category", "Unknown"))
+
+        if not category_names:
+            st.info("No threshold categories defined.")
+            return
+
+        render_section_header("Category Details")
+        category_label_to_name = {prettify_text(name): name for name in category_names}
+        selected_category_label = st.selectbox(
+            "Select a response category",
+            sorted(category_label_to_name.keys()),
+            key=f"ordinal_category_select_{response_name}",
+        )
+        selected_category = category_label_to_name[selected_category_label]
+        render_field_value("Intercept", categories[selected_category].get("intercept", "Unknown"))
+
+        render_section_header("Predictors")
+        render_predictor_selector(formula.get("predictors", {}), response_name)
+
+    with right:
+        render_formula_box("Formula", build_formula_string(response_name, formula, distributions, selected_category))
+
+
+def render_formula_block(response_name: str, formula: dict, distributions: dict) -> None:
+    if not formula:
+        st.info("No formula defined for this variable.")
+        return
+
+    if "intercept" in formula and "predictors" in formula:
+        render_quantitative_formula(response_name, formula, distributions)
+        return
+
+    if "reference_category" in formula and "other_categories" in formula and "predictors" in formula and "intercept" not in formula:
+        render_ordinal_formula(response_name, formula, distributions)
+        return
+
+    if "reference_category" in formula and "other_categories" in formula:
+        render_nominal_formula(response_name, formula, distributions)
+        return
+
+    st.info("Unsupported formula format.")
+
+
+def render_formulas_tab(formulas_data, distributions_data) -> None:
+    formulas_by_name = formulas_data
+    response_names = sorted(formulas_by_name.keys())
+    response_label_to_name = {prettify_text(name): name for name in response_names}
+    selected_response_label = st.selectbox("Select a variable", sorted(response_label_to_name.keys()), key="formula_select")
+    response_name = response_label_to_name[selected_response_label]
+    render_formula_block(response_name, formulas_by_name[response_name], distributions_data)
 
 
 def build_distribution_chart(item: dict):
     distribution_name = item.get("distribution", "")
-    parameters = item.get("parameters", {})
+    parameters = {key: value for key, value in item.items() if key != "distribution"}
 
     if distribution_name in {"Normal", "Exponential", "Gamma", "Log Normal", "Beta", "Uniform"}:
         return build_truncated_density_chart(distribution_name, parameters)
@@ -336,6 +521,8 @@ def support_ceiling(distribution_name: str, dist):
 
 def pmf_distribution(distribution_name: str, parameters: dict):
     if distribution_name == "Discrete Uniform":
+        if "min" not in parameters or "max" not in parameters:
+            return None
         return stats.randint(low=parameters["min"], high=parameters["max"] + 1)
     if distribution_name == "Bernoulli":
         return stats.bernoulli(p=parameters["success_prob"])
@@ -355,21 +542,26 @@ def pmf_distribution(distribution_name: str, parameters: dict):
 
 def pmf_support(distribution_name: str, parameters: dict, min_value, max_value):
     if distribution_name == "Discrete Uniform":
+        if "min" not in parameters or "max" not in parameters:
+            return np.array([])
         return np.arange(int(parameters["min"]), int(parameters["max"]) + 1)
     if distribution_name == "Bernoulli":
         return np.array([0, 1])
     if distribution_name == "Binomial":
         return np.arange(0, int(parameters["n_trials"]) + 1)
     if distribution_name == "Poisson":
-        upper = int(max(parameters["max"] if max_value is None else max_value, parameters["rate"] + 6 * np.sqrt(parameters["rate"])))
+        upper_bound = max_value if max_value is not None else parameters.get("max")
+        upper = int(max(upper_bound if upper_bound is not None else 0, parameters["rate"] + 6 * np.sqrt(parameters["rate"])))
         return np.arange(0, upper + 1)
     if distribution_name == "Geometric":
-        upper = int(max(parameters["max"] if max_value is None else max_value, 25))
+        upper_bound = max_value if max_value is not None else parameters.get("max")
+        upper = int(max(upper_bound if upper_bound is not None else 25, 25))
         return np.arange(max(1, int(parameters.get("min", 1))), upper + 1)
     if distribution_name == "Negative Binomial":
         shape = parameters["shape"]
         mean = parameters["mean"]
-        upper = int(max(parameters["max"] if max_value is None else max_value, mean + 6 * np.sqrt(mean + mean * mean / shape)))
+        upper_bound = max_value if max_value is not None else parameters.get("max")
+        upper = int(max(upper_bound if upper_bound is not None else 0, mean + 6 * np.sqrt(mean + mean * mean / shape)))
         return np.arange(max(0, int(parameters.get("min", 0))), upper + 1)
     return np.array([])
 
@@ -381,7 +573,7 @@ def build_categorical_chart(parameters: dict):
         return None
 
     values = [
-        {"category": category, "probability": float(probability)}
+        {"category": prettify_text(category), "probability": float(probability)}
         for category, probability in zip(categories, probabilities)
     ]
     return (
@@ -390,7 +582,7 @@ def build_categorical_chart(parameters: dict):
         .encode(
             x=alt.X("category:N", title="Category", sort=None),
             y=alt.Y("probability:Q", title="Probability"),
-            tooltip=[alt.Tooltip("category:N", title="category"), alt.Tooltip("probability:Q", title="probability")],
+            tooltip=[alt.Tooltip("category:N", title="Category"), alt.Tooltip("probability:Q", title="Probability")],
         )
         .properties(height=320)
     )
@@ -404,7 +596,7 @@ def render_dag(dag_data: dict) -> None:
         nodes.append(
             Node(
                 id=node_id,
-                label=node_id,
+                label=prettify_text(node_id),
                 size=18,
                 color=color,
                 font={"color": "#FFFFFF"},
@@ -421,12 +613,14 @@ def render_dag(dag_data: dict) -> None:
         )
 
     config = Config(
-        width=1200,
-        height=800,
+        width=1400,
+        height=850,
         directed=True,
         physics=True,
-        hierarchical=True,
+        hierarchical=False,
         nodeHighlightBehavior=True,
+        node={"size": 28},
+        randomSeed=7,
     )
 
     agraph(nodes=nodes, edges=edges, config=config)
@@ -437,9 +631,7 @@ with tabs[0]:
     if variables_data is None:
         st.info("Variables have not been created yet.")
     else:
-        variable_names = {item["name"]: item for item in variables_data}
-        variable_name = st.selectbox("Select a variable", sorted(variable_names.keys()), key="variable_select")
-        render_details(variable_name, variable_names)
+        render_variable_tab(variables_data)
 
 with tabs[1]:
     st.header("DAG")
@@ -447,7 +639,7 @@ with tabs[1]:
     if dag_data is None:
         st.info("DAG has not been created yet.")
     else:
-        render_dag(dag_data["dag"])
+        render_dag(dag_data)
 
 with tabs[2]:
     st.header("Distributions")
@@ -456,16 +648,17 @@ with tabs[2]:
         st.info("Distributions have not been created yet.")
     else:
         distributions = distributions_data
-        distribution_name = st.selectbox("Select a variable", sorted(distributions.keys()), key="distribution_select")
+        distribution_name = render_distribution_selector(distributions)
         render_distribution_details(distribution_name, distributions)
 
 with tabs[3]:
     st.header("Formulas")
     formulas_data = load_json(formulas_path)
+    distributions_data = load_json(distributions_path) or {}
     if formulas_data is None:
         st.info("Formulas have not been created yet.")
     else:
-        render_formulas_tab(formulas_data)
+        render_formulas_tab(formulas_data, distributions_data)
 
 with tabs[4]:
     st.header("Data")
