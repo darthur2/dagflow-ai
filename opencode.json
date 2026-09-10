@@ -33,9 +33,10 @@
   "autoshare": false,
   "autoupdate": false,
   "default_agent": "synthesizer",
-  "agents": {
+  "agent": {
     "synthesizer": {
       "mode": "primary",
+      "model": "ssec-litellm/gpt-5.4-mini",
       "description": "Default orchestrator for synthetic dataset generation. Delegates work to specialized domain agents.",
       "prompt": "prompts/synthesizer.md",
       "permission": {
