@@ -1,4 +1,195 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "default_agent": "synthesizer"
+  "model": "opencode/mimo-v2.5-free",
+  "provider": {
+    "ssec-litellm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://llmaven-prod-litellm-prod.lemonmoss-19296c81.westus2.azurecontainerapps.io/"
+      },
+      "models": {
+        "gemma-4-31b": {},
+        "gpt-5.4-mini": {},
+        "kimi-k2-thinking": {}
+      }
+    },
+    "openai": {
+      "npm": "@ai-sdk/openai",
+      "name": "OpenAI",
+      "models": {
+        "gpt-4o": {},
+        "gpt-5.4-mini": {},
+        "gpt-5.4-nano": {}
+      }
+    },
+    "anthropic": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "Anthropic",
+      "models": {
+        "claude-sonnet-4-20250514": {}
+      }
+    }
+  },
+  "autoshare": false,
+  "autoupdate": false,
+  "default_agent": "synthesizer",
+  "agents": {
+    "synthesizer": {
+      "mode": "primary",
+      "description": "Default orchestrator for synthetic dataset generation. Delegates work to specialized domain agents.",
+      "prompt": "prompts/synthesizer.md",
+      "permission": {
+        "read": {
+          "*": "deny",
+          "synthdata/*": "allow"
+        },
+        "glob": {
+          "*": "deny",
+          "synthdata/*": "allow"
+        },
+        "grep": "deny",
+        "list": "allow",
+        "question": "allow",
+        "edit": "deny",
+        "bash": "deny",
+        "external_directory": "deny",
+        "todowrite": "allow",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "lsp": "deny",
+        "skill": "deny",
+        "doom_loop": "deny",
+        "task": {
+          "*": "deny",
+          "variables": "allow",
+          "dag": "allow",
+          "distributions": "allow",
+          "formulas": "allow"
+        }
+      }
+    },
+    "variables": {
+      "mode": "subagent",
+      "description": "Manage a JSON variable list called variables.json",
+      "prompt": "prompts/variables.md",
+      "permission": {
+        "read": {
+          "synthdata/variables.json": "allow",
+          "*": "deny"
+        },
+        "glob": {
+          "synthdata/variables.json": "allow",
+          "*": "deny"
+        },
+        "grep": "deny",
+        "list": "deny",
+        "question": "deny",
+        "edit": {
+          "synthdata/variables.json": "allow",
+          "*": "deny"
+        },
+        "bash": "deny",
+        "external_directory": "deny",
+        "todowrite": "allow",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "lsp": "deny",
+        "skill": "deny",
+        "doom_loop": "deny",
+        "task": "deny"
+      }
+    },
+    "dag": {
+      "mode": "subagent",
+      "description": "Manage a JSON list called dag.json containing information about a Directed Acyclic Graph (DAG).",
+      "prompt": "prompts/dag.md",
+      "permission": {
+        "read": {
+          "*": "deny",
+          "synthdata/dag.json": "allow"
+        },
+        "glob": {
+          "*": "deny",
+          "synthdata/dag.json": "allow"
+        },
+        "grep": "deny",
+        "list": "deny",
+        "question": "deny",
+        "edit": {
+          "*": "deny",
+          "synthdata/dag.json": "allow"
+        },
+        "bash": "deny",
+        "external_directory": "deny",
+        "todowrite": "allow",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "lsp": "deny",
+        "skill": "deny",
+        "doom_loop": "deny",
+        "task": "deny"
+      }
+    },
+    "distributions": {
+      "mode": "subagent",
+      "description": "Manage a JSON distribution list called distributions.json",
+      "prompt": "prompts/distributions.md",
+      "permission": {
+        "read": {
+          "synthdata/distributions.json": "allow",
+          "*": "deny"
+        },
+        "glob": {
+          "synthdata/distributions.json": "allow",
+          "*": "deny"
+        },
+        "grep": "deny",
+        "list": "deny",
+        "question": "deny",
+        "edit": {
+          "synthdata/distributions.json": "allow",
+          "*": "deny"
+        },
+        "bash": "deny",
+        "external_directory": "deny",
+        "todowrite": "allow",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "lsp": "deny",
+        "skill": "deny",
+        "doom_loop": "deny",
+        "task": "deny"
+      }
+    },
+    "formulas": {
+      "mode": "subagent",
+      "description": "Manage a JSON formula list called formulas.json",
+      "prompt": "prompts/formulas.md",
+      "permission": {
+        "read": {
+          "synthdata/formulas.json": "allow"
+        },
+        "glob": {
+          "synthdata/formulas.json": "allow",
+          "*": "deny"
+        },
+        "grep": "deny",
+        "list": "deny",
+        "question": "deny",
+        "edit": {
+          "synthdata/formulas.json": "allow",
+          "*": "deny"
+        },
+        "bash": "deny",
+        "external_directory": "deny",
+        "todowrite": "allow",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "lsp": "deny",
+        "skill": "deny",
+        "doom_loop": "deny",
+        "task": "deny"
+      }
+    }
+  }
 }
