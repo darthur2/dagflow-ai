@@ -1,0 +1,164 @@
+{
+  "dag": {
+    "nodes": {
+      "age": { "type": "stochastic" },
+      "sex": { "type": "stochastic" },
+      "race_ethnicity": { "type": "stochastic" },
+      "insurance_status": { "type": "stochastic" },
+      "socioeconomic_status": { "type": "stochastic" },
+      "smoking_status": { "type": "stochastic" },
+      "alcohol_use": { "type": "stochastic" },
+      "body_mass_index": { "type": "stochastic" },
+      "physical_activity_level": { "type": "stochastic" },
+      "diet_quality": { "type": "stochastic" },
+      "comorbidity_index": { "type": "stochastic" },
+      "hypertension_history": { "type": "stochastic" },
+      "diabetes_history": { "type": "stochastic" },
+      "cardiovascular_disease_history": { "type": "stochastic" },
+      "chronic_kidney_disease_history": { "type": "stochastic" },
+      "medication_adherence": { "type": "stochastic" },
+      "baseline_blood_pressure": { "type": "stochastic" },
+      "baseline_heart_rate": { "type": "stochastic" },
+      "baseline_hba1c": { "type": "stochastic" },
+      "baseline_ldl": { "type": "stochastic" },
+      "baseline_creatinine": { "type": "stochastic" },
+      "hospital_admission": { "type": "stochastic" },
+      "length_of_stay": { "type": "stochastic" },
+      "icu_admission": { "type": "stochastic" },
+      "procedure_type": { "type": "stochastic" },
+      "treatment_exposure": { "type": "stochastic" },
+      "follow_up_time": { "type": "deterministic" },
+      "readmission": { "type": "stochastic" },
+      "mortality": { "type": "stochastic" },
+      "adverse_event": { "type": "stochastic" },
+      "quality_of_life": { "type": "stochastic" }
+    },
+    "edges": {
+      "age_to_smoking_status": { "parent": "age", "child": "smoking_status" },
+      "age_to_alcohol_use": { "parent": "age", "child": "alcohol_use" },
+      "age_to_bmi": { "parent": "age", "child": "body_mass_index" },
+      "age_to_comorbidity_index": { "parent": "age", "child": "comorbidity_index" },
+      "age_to_hypertension": { "parent": "age", "child": "hypertension_history" },
+      "age_to_diabetes": { "parent": "age", "child": "diabetes_history" },
+      "age_to_cvd": { "parent": "age", "child": "cardiovascular_disease_history" },
+      "age_to_ckd": { "parent": "age", "child": "chronic_kidney_disease_history" },
+      "age_to_admission": { "parent": "age", "child": "hospital_admission" },
+      "age_to_mortality": { "parent": "age", "child": "mortality" },
+
+      "sex_to_bmi": { "parent": "sex", "child": "body_mass_index" },
+      "sex_to_smoking_status": { "parent": "sex", "child": "smoking_status" },
+      "sex_to_alcohol_use": { "parent": "sex", "child": "alcohol_use" },
+      "sex_to_cvd": { "parent": "sex", "child": "cardiovascular_disease_history" },
+      "sex_to_quality_of_life": { "parent": "sex", "child": "quality_of_life" },
+
+      "race_to_ses": { "parent": "race_ethnicity", "child": "socioeconomic_status" },
+      "race_to_insurance": { "parent": "race_ethnicity", "child": "insurance_status" },
+      "race_to_adherence": { "parent": "race_ethnicity", "child": "medication_adherence" },
+
+      "ses_to_insurance": { "parent": "socioeconomic_status", "child": "insurance_status" },
+      "ses_to_smoking": { "parent": "socioeconomic_status", "child": "smoking_status" },
+      "ses_to_alcohol": { "parent": "socioeconomic_status", "child": "alcohol_use" },
+      "ses_to_activity": { "parent": "socioeconomic_status", "child": "physical_activity_level" },
+      "ses_to_diet": { "parent": "socioeconomic_status", "child": "diet_quality" },
+      "ses_to_adherence": { "parent": "socioeconomic_status", "child": "medication_adherence" },
+      "ses_to_admission": { "parent": "socioeconomic_status", "child": "hospital_admission" },
+      "ses_to_followup": { "parent": "socioeconomic_status", "child": "follow_up_time" },
+
+      "insurance_to_adherence": { "parent": "insurance_status", "child": "medication_adherence" },
+      "insurance_to_admission": { "parent": "insurance_status", "child": "hospital_admission" },
+
+      "smoking_to_bmi": { "parent": "smoking_status", "child": "body_mass_index" },
+      "smoking_to_cvd": { "parent": "smoking_status", "child": "cardiovascular_disease_history" },
+      "smoking_to_ckd": { "parent": "smoking_status", "child": "chronic_kidney_disease_history" },
+      "smoking_to_qol": { "parent": "smoking_status", "child": "quality_of_life" },
+
+      "alcohol_to_liver_like_risk": { "parent": "alcohol_use", "child": "comorbidity_index" },
+      "alcohol_to_adverse": { "parent": "alcohol_use", "child": "adverse_event" },
+
+      "activity_to_bmi": { "parent": "physical_activity_level", "child": "body_mass_index" },
+      "activity_to_bp": { "parent": "physical_activity_level", "child": "baseline_blood_pressure" },
+      "activity_to_qol": { "parent": "physical_activity_level", "child": "quality_of_life" },
+
+      "diet_to_bmi": { "parent": "diet_quality", "child": "body_mass_index" },
+      "diet_to_hba1c": { "parent": "diet_quality", "child": "baseline_hba1c" },
+      "diet_to_ldl": { "parent": "diet_quality", "child": "baseline_ldl" },
+
+      "bmi_to_htn": { "parent": "body_mass_index", "child": "hypertension_history" },
+      "bmi_to_dm": { "parent": "body_mass_index", "child": "diabetes_history" },
+      "bmi_to_bp": { "parent": "body_mass_index", "child": "baseline_blood_pressure" },
+      "bmi_to_hba1c": { "parent": "body_mass_index", "child": "baseline_hba1c" },
+      "bmi_to_qol": { "parent": "body_mass_index", "child": "quality_of_life" },
+
+      "comorbidity_to_adherence": { "parent": "comorbidity_index", "child": "medication_adherence" },
+      "comorbidity_to_admission": { "parent": "comorbidity_index", "child": "hospital_admission" },
+      "comorbidity_to_mortality": { "parent": "comorbidity_index", "child": "mortality" },
+      "comorbidity_to_qol": { "parent": "comorbidity_index", "child": "quality_of_life" },
+
+      "htn_to_bp": { "parent": "hypertension_history", "child": "baseline_blood_pressure" },
+      "htn_to_admission": { "parent": "hypertension_history", "child": "hospital_admission" },
+
+      "dm_to_hba1c": { "parent": "diabetes_history", "child": "baseline_hba1c" },
+      "dm_to_cvd": { "parent": "diabetes_history", "child": "cardiovascular_disease_history" },
+      "dm_to_ckd": { "parent": "diabetes_history", "child": "chronic_kidney_disease_history" },
+      "dm_to_admission": { "parent": "diabetes_history", "child": "hospital_admission" },
+
+      "cvd_to_bp": { "parent": "cardiovascular_disease_history", "child": "baseline_blood_pressure" },
+      "cvd_to_hr": { "parent": "cardiovascular_disease_history", "child": "baseline_heart_rate" },
+      "cvd_to_admission": { "parent": "cardiovascular_disease_history", "child": "hospital_admission" },
+      "cvd_to_mortality": { "parent": "cardiovascular_disease_history", "child": "mortality" },
+
+      "ckd_to_creatinine": { "parent": "chronic_kidney_disease_history", "child": "baseline_creatinine" },
+      "ckd_to_admission": { "parent": "chronic_kidney_disease_history", "child": "hospital_admission" },
+      "ckd_to_mortality": { "parent": "chronic_kidney_disease_history", "child": "mortality" },
+
+      "adherence_to_treatment": { "parent": "medication_adherence", "child": "treatment_exposure" },
+      "adherence_to_qol": { "parent": "medication_adherence", "child": "quality_of_life" },
+
+      "bp_to_treatment": { "parent": "baseline_blood_pressure", "child": "treatment_exposure" },
+      "hr_to_admission": { "parent": "baseline_heart_rate", "child": "hospital_admission" },
+      "hr_to_mortality": { "parent": "baseline_heart_rate", "child": "mortality" },
+
+      "hba1c_to_treatment": { "parent": "baseline_hba1c", "child": "treatment_exposure" },
+      "hba1c_to_admission": { "parent": "baseline_hba1c", "child": "hospital_admission" },
+
+      "ldl_to_treatment": { "parent": "baseline_ldl", "child": "treatment_exposure" },
+      "ldl_to_admission": { "parent": "baseline_ldl", "child": "hospital_admission" },
+
+      "creatinine_to_treatment": { "parent": "baseline_creatinine", "child": "treatment_exposure" },
+      "creatinine_to_admission": { "parent": "baseline_creatinine", "child": "hospital_admission" },
+      "creatinine_to_mortality": { "parent": "baseline_creatinine", "child": "mortality" },
+
+      "admission_to_los": { "parent": "hospital_admission", "child": "length_of_stay" },
+      "admission_to_icu": { "parent": "hospital_admission", "child": "icu_admission" },
+      "admission_to_proc": { "parent": "hospital_admission", "child": "procedure_type" },
+      "admission_to_treatment": { "parent": "hospital_admission", "child": "treatment_exposure" },
+      "admission_to_adverse": { "parent": "hospital_admission", "child": "adverse_event" },
+      "admission_to_mortality": { "parent": "hospital_admission", "child": "mortality" },
+
+      "icu_to_los": { "parent": "icu_admission", "child": "length_of_stay" },
+      "icu_to_mortality": { "parent": "icu_admission", "child": "mortality" },
+
+      "proc_to_treatment": { "parent": "procedure_type", "child": "treatment_exposure" },
+      "proc_to_adverse": { "parent": "procedure_type", "child": "adverse_event" },
+
+      "treatment_to_adverse": { "parent": "treatment_exposure", "child": "adverse_event" },
+      "treatment_to_qol": { "parent": "treatment_exposure", "child": "quality_of_life" },
+      "treatment_to_readmission": { "parent": "treatment_exposure", "child": "readmission" },
+      "treatment_to_mortality": { "parent": "treatment_exposure", "child": "mortality" },
+
+      "los_to_readmission": { "parent": "length_of_stay", "child": "readmission" },
+      "los_to_mortality": { "parent": "length_of_stay", "child": "mortality" },
+      "los_to_qol": { "parent": "length_of_stay", "child": "quality_of_life" },
+
+      "followup_to_readmission": { "parent": "follow_up_time", "child": "readmission" },
+      "followup_to_mortality": { "parent": "follow_up_time", "child": "mortality" },
+      "followup_to_qol": { "parent": "follow_up_time", "child": "quality_of_life" },
+
+      "readmission_to_mortality": { "parent": "readmission", "child": "mortality" },
+      "readmission_to_qol": { "parent": "readmission", "child": "quality_of_life" },
+
+      "adverse_to_mortality": { "parent": "adverse_event", "child": "mortality" },
+      "adverse_to_qol": { "parent": "adverse_event", "child": "quality_of_life" }
+    }
+  }
+}

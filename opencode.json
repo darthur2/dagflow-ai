@@ -38,7 +38,7 @@
       "mode": "primary",
       "model": "ssec-litellm/gpt-5.4-mini",
       "description": "Default orchestrator for synthetic dataset generation. Delegates work to specialized domain agents.",
-      "prompt": "prompts/synthesizer.md",
+      "prompt": "{file:./prompts/synthesizer.md}",
       "permission": {
         "read": {
           "*": "deny",
@@ -46,6 +46,8 @@
         },
         "glob": {
           "*": "deny",
+          "synthdata": "allow",
+          "synthdata/": "allow",
           "synthdata/*": "allow"
         },
         "grep": "deny",
@@ -72,22 +74,26 @@
     "variables": {
       "mode": "subagent",
       "description": "Manage a JSON variable list called variables.json",
-      "prompt": "prompts/variables.md",
+      "prompt": "{file:./prompts/variables.md}",
       "permission": {
         "read": {
-          "synthdata/variables.json": "allow",
-          "*": "deny"
+          "*": "deny",
+          "synthdata": "allow",
+          "synthdata/": "allow",
+          "synthdata/*": "allow"
         },
         "glob": {
-          "synthdata/variables.json": "allow",
-          "*": "deny"
+          "*": "deny",
+          "synthdata": "allow",
+          "synthdata/": "allow",
+          "synthdata/*": "allow"
         },
         "grep": "deny",
         "list": "deny",
         "question": "deny",
         "edit": {
-          "synthdata/variables.json": "allow",
-          "*": "deny"
+          "*": "deny",
+          "synthdata/variables.json": "allow"
         },
         "bash": "deny",
         "external_directory": "deny",
@@ -103,15 +109,19 @@
     "dag": {
       "mode": "subagent",
       "description": "Manage a JSON list called dag.json containing information about a Directed Acyclic Graph (DAG).",
-      "prompt": "prompts/dag.md",
+      "prompt": "{file:./prompts/dag.md}",
       "permission": {
         "read": {
           "*": "deny",
-          "synthdata/dag.json": "allow"
+          "synthdata": "allow",
+          "synthdata/": "allow",
+          "synthdata/*": "allow"
         },
         "glob": {
           "*": "deny",
-          "synthdata/dag.json": "allow"
+          "synthdata": "allow",
+          "synthdata/": "allow",
+          "synthdata/*": "allow"
         },
         "grep": "deny",
         "list": "deny",
@@ -134,22 +144,26 @@
     "distributions": {
       "mode": "subagent",
       "description": "Manage a JSON distribution list called distributions.json",
-      "prompt": "prompts/distributions.md",
+      "prompt": "{file:./prompts/distributions.md}",
       "permission": {
         "read": {
-          "synthdata/distributions.json": "allow",
-          "*": "deny"
+          "*": "deny",
+          "synthdata": "allow",
+          "synthdata/": "allow",
+          "synthdata/*": "allow"
         },
         "glob": {
-          "synthdata/distributions.json": "allow",
-          "*": "deny"
+          "*": "deny",
+          "synthdata": "allow",
+          "synthdata/": "allow",
+          "synthdata/*": "allow"
         },
         "grep": "deny",
         "list": "deny",
         "question": "deny",
         "edit": {
-          "synthdata/distributions.json": "allow",
-          "*": "deny"
+          "*": "deny",
+          "synthdata/distributions.json": "allow"
         },
         "bash": "deny",
         "external_directory": "deny",
@@ -165,21 +179,26 @@
     "formulas": {
       "mode": "subagent",
       "description": "Manage a JSON formula list called formulas.json",
-      "prompt": "prompts/formulas.md",
+      "prompt": "{file:./prompts/formulas.md}",
       "permission": {
         "read": {
-          "synthdata/formulas.json": "allow"
+          "*": "deny",
+          "synthdata": "allow",
+          "synthdata/": "allow",
+          "synthdata/*": "allow"
         },
         "glob": {
-          "synthdata/formulas.json": "allow",
-          "*": "deny"
+          "*": "deny",
+          "synthdata": "allow",
+          "synthdata/": "allow",
+          "synthdata/*": "allow"
         },
         "grep": "deny",
         "list": "deny",
         "question": "deny",
         "edit": {
-          "synthdata/formulas.json": "allow",
-          "*": "deny"
+          "*": "deny",
+          "synthdata/formulas.json": "allow"
         },
         "bash": "deny",
         "external_directory": "deny",
