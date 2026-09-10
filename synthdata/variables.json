@@ -1,0 +1,10 @@
+{
+  "variables": {
+    "name_of_variable_1": {
+      "description": "description of variable"
+    },
+    "name_of_variable_2": {
+      "description": "description of variable"
+    }
+  }
+}
