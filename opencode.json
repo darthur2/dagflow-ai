@@ -42,6 +42,8 @@
       "permission": {
         "read": {
           "*": "deny",
+          "synthdata": "allow",
+          "synthdata/": "allow",
           "synthdata/*": "allow"
         },
         "glob": {
