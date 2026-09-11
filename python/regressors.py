@@ -428,3 +428,105 @@ class LogNormalRegressor:
         mean = np.repeat(eta, int(np.ceil(n / len(eta))))[:n]
         samples = stats.lognorm.rvs(s=np.sqrt(self.sigma2), scale=np.exp(mean), size=n)
         return _as_1d_array(samples)
+
+
+@dataclass(frozen=True)
+class BetaRegressor:
+    target_mean: float
+    target_variance: float
+    target_snr: float
+    X: np.ndarray
+    beta_1_init: np.ndarray
+    beta_0: float | None = None
+    c: float | None = None
+    phi: float | None = None
+
+    def __post_init__(self) -> None:
+        X = np.asarray(self.X, dtype=float)
+        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1_init.shape[0]:
+            raise ValueError("beta_1_init must have one coefficient per column in X")
+        if not 0.0 < self.target_mean < 1.0:
+            raise ValueError("target_mean must be in (0, 1)")
+        if self.target_variance <= 0:
+            raise ValueError("target_variance must be positive")
+        if self.target_snr <= 0:
+            raise ValueError("target_snr must be positive")
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1_init", beta_1_init)
+
+    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
+        return beta_0 + self.X @ (c * self.beta_1_init)
+
+    def _mu(self, beta_0: float, c: float) -> np.ndarray:
+        eta = self._linear_predictor(beta_0, c)
+        return 1.0 / (1.0 + np.exp(-eta))
+
+    def _row_moments(self, beta_0: float, c: float, phi: float) -> tuple[np.ndarray, np.ndarray]:
+        mu = self._mu(beta_0, c)
+        mean = mu
+        var = mu * (1.0 - mu) / (1.0 + phi)
+        return mean, var
+
+    def target_mean_value(self, beta_0: float, c: float, phi: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0, c, phi)
+        return float(cond_mean.mean())
+
+    def target_variance_value(self, beta_0: float, c: float, phi: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, c, phi)
+        return float(cond_mean.var() + cond_var.mean())
+
+    def target_snr_value(self, beta_0: float, c: float, phi: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, c, phi)
+        within = float(cond_var.mean())
+        if within <= 0:
+            raise ValueError("Conditional variance is non-positive")
+        return float(cond_mean.var() / within)
+
+    def _feasible_initial_guess(self) -> tuple[float, float, float]:
+        mu = np.clip(self.target_mean, 1e-3, 1.0 - 1e-3)
+        x_mean = np.mean(self.X @ self.beta_1_init)
+        beta_0 = np.log(mu / (1.0 - mu)) - x_mean
+        c = 1.0
+        phi = max(self.target_snr, 1.0)
+        return beta_0, c, phi
+
+    def calibrate(self) -> "BetaRegressor":
+        if self.beta_0 is not None and self.c is not None and self.phi is not None:
+            return self
+
+        initial_beta_0, initial_c, initial_phi = self._feasible_initial_guess()
+
+        def residuals(params: np.ndarray) -> np.ndarray:
+            beta_0, c, log_phi = params
+            phi = float(np.exp(log_phi))
+            try:
+                mean_residual = self.target_mean_value(beta_0, c, phi) - self.target_mean
+                variance_residual = self.target_variance_value(beta_0, c, phi) - self.target_variance
+                snr_residual = self.target_snr_value(beta_0, c, phi) - self.target_snr
+                return np.array([mean_residual, variance_residual, snr_residual], dtype=float)
+            except ValueError:
+                return np.array([1e6, 1e6, 1e6], dtype=float)
+
+        result = optimize.least_squares(
+            residuals,
+            x0=np.array([initial_beta_0, initial_c, np.log(initial_phi)], dtype=float),
+            bounds=([-np.inf, 0.0, -np.inf], [np.inf, np.inf, np.inf]),
+        )
+
+        if not result.success:
+            raise ValueError(f"Unable to calibrate BetaRegressor: {result.message}")
+
+        beta_0, c, log_phi = result.x
+        phi = float(np.exp(log_phi))
+        return replace(self, beta_0=float(beta_0), c=float(c), phi=phi)
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None or self.c is None or self.phi is None:
+            raise ValueError("BetaRegressor must be calibrated before sampling")
+
+        mu = np.repeat(self._mu(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        samples = stats.beta.rvs(self.phi * mu, self.phi * (1.0 - mu), size=n)
+        return _as_1d_array(samples)

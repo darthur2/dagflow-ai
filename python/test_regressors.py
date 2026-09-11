@@ -3,7 +3,7 @@ import pytest
 from scipy import stats
 
 from distributions import Beta, Bernoulli, DiscreteUniform, Exponential, Gamma, Geometric, LogNormal, NegativeBinomial, Normal, Poisson, Uniform
-from regressors import ExponentialRegressor, GammaRegressor, LogNormalRegressor, NormalRegressor
+from regressors import BetaRegressor, ExponentialRegressor, GammaRegressor, LogNormalRegressor, NormalRegressor
 
 
 FIXTURE_DISTRIBUTIONS = (
@@ -296,6 +296,82 @@ LOGNORMAL_SCENARIOS = [
 ]
 
 
+BETA_SCENARIOS = [
+    {
+        "name": "beta_mid_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.2,
+        "beta_1_init": np.array([0.8, -0.5, 0.6, 0.2, -0.7, 0.4], dtype=float),
+        "c": 0.5,
+        "phi": 7.0,
+        "target_snr": 2.0,
+        "seed_x": 1111,
+        "seed_y": 2222,
+    },
+    {
+        "name": "beta_lower_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.1,
+        "beta_1_init": np.array([-0.6, 0.9, -0.4, 0.7, 0.3, -0.8], dtype=float),
+        "c": 0.35,
+        "phi": 4.0,
+        "target_snr": 0.8,
+        "seed_x": 3333,
+        "seed_y": 4444,
+    },
+    {
+        "name": "beta_high_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.35,
+        "beta_1_init": np.array([1.0, -0.8, 0.5, 0.4, -0.3, 0.9], dtype=float),
+        "c": 0.55,
+        "phi": 12.0,
+        "target_snr": 5.5,
+        "seed_x": 5555,
+        "seed_y": 6666,
+    },
+    {
+        "name": "beta_low_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.15,
+        "beta_1_init": np.array([0.6, -0.7, 0.5, -0.4, 0.8, -0.2], dtype=float),
+        "c": 0.3,
+        "phi": 3.5,
+        "target_snr": 0.4,
+        "seed_x": 7777,
+        "seed_y": 8888,
+    },
+    {
+        "name": "beta_mid_high_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.1,
+        "beta_1_init": np.array([-0.9, 0.4, 0.7, -0.5, 0.2, 1.0], dtype=float),
+        "c": 0.45,
+        "phi": 9.0,
+        "target_snr": 3.2,
+        "seed_x": 9999,
+        "seed_y": 1010,
+    },
+    {
+        "name": "beta_near_ceiling",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.25,
+        "beta_1_init": np.array([1.1, -0.6, 0.3, 0.9, -0.8, 0.4], dtype=float),
+        "c": 0.5,
+        "phi": 14.0,
+        "target_snr": 7.5,
+        "seed_x": 2020,
+        "seed_y": 3030,
+    },
+]
+
+
 def _build_x_matrix(n: int, p: int, seed: int = 0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     columns = []
@@ -521,6 +597,55 @@ def _run_lognormal_scenario(scenario: dict) -> dict[str, float]:
     }
 
 
+def _sample_beta_regression(x: np.ndarray, beta_0: float, beta_1_init: np.ndarray, c: float, phi: float, seed: int = 0) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    eta = beta_0 + x @ (c * beta_1_init)
+    mu = 1.0 / (1.0 + np.exp(-eta))
+    return stats.beta.rvs(phi * mu, phi * (1.0 - mu), random_state=rng)
+
+
+def _run_beta_scenario(scenario: dict) -> dict[str, float]:
+    x = _build_x_matrix(scenario["n"], scenario["p"], seed=scenario["seed_x"])
+    samples = _sample_beta_regression(
+        x,
+        scenario["beta_0"],
+        scenario["beta_1_init"],
+        scenario["c"],
+        scenario["phi"],
+        seed=scenario["seed_y"],
+    )
+    target_mean = float(np.mean(samples))
+    target_variance = float(np.var(samples))
+
+    regressor = BetaRegressor(
+        target_mean=target_mean,
+        target_variance=target_variance,
+        target_snr=scenario["target_snr"],
+        X=x,
+        beta_1_init=scenario["beta_1_init"],
+    )
+
+    fitted = regressor.calibrate()
+    fitted_samples = fitted.sample(scenario["n"])
+    model_mean = float(fitted.target_mean_value(fitted.beta_0, fitted.c, fitted.phi))
+    model_variance = float(fitted.target_variance_value(fitted.beta_0, fitted.c, fitted.phi))
+    model_snr = float(fitted.target_snr_value(fitted.beta_0, fitted.c, fitted.phi))
+
+    return {
+        "target_mean": target_mean,
+        "target_variance": target_variance,
+        "target_snr": scenario["target_snr"],
+        "model_mean": model_mean,
+        "model_variance": model_variance,
+        "model_snr": model_snr,
+        "sample_mean": float(np.mean(fitted_samples)),
+        "sample_variance": float(np.var(fitted_samples)),
+        "fitted_beta_0": float(fitted.beta_0),
+        "fitted_c": float(fitted.c),
+        "fitted_phi": float(fitted.phi),
+    }
+
+
 @pytest.mark.parametrize("scenario", NORMAL_SCENARIOS, ids=[scenario["name"] for scenario in NORMAL_SCENARIOS])
 def test_normal_regressor_synthetic_calibration(scenario):
     results = _run_normal_scenario(scenario)
@@ -623,6 +748,33 @@ def test_lognormal_regressor_synthetic_calibration(scenario):
     assert np.isfinite(results["fitted_sigma2"])
 
 
+@pytest.mark.parametrize("scenario", BETA_SCENARIOS, ids=[scenario["name"] for scenario in BETA_SCENARIOS])
+def test_beta_regressor_synthetic_calibration(scenario):
+    results = _run_beta_scenario(scenario)
+
+    print(f"BetaRegressor synthetic calibration summary [{scenario['name']}]")
+    print(f"  target mean      : {results['target_mean']:.6f}")
+    print(f"  model mean       : {results['model_mean']:.6f}")
+    print(f"  sample mean      : {results['sample_mean']:.6f}")
+    print(f"  target variance  : {results['target_variance']:.6f}")
+    print(f"  model variance   : {results['model_variance']:.6f}")
+    print(f"  sample variance  : {results['sample_variance']:.6f}")
+    print(f"  target SNR       : {results['target_snr']:.6f}")
+    print(f"  model SNR        : {results['model_snr']:.6f}")
+    print(f"  fitted beta_0    : {results['fitted_beta_0']:.6f}")
+    print(f"  fitted c         : {results['fitted_c']:.6f}")
+    print(f"  fitted phi       : {results['fitted_phi']:.6f}")
+
+    assert np.isclose(results["sample_mean"], results["target_mean"], rtol=0.12, atol=0.12)
+    assert np.isclose(results["sample_variance"], results["target_variance"], rtol=0.2, atol=0.2)
+    assert np.isclose(results["model_mean"], results["target_mean"], rtol=1e-6, atol=1e-6)
+    assert np.isclose(results["model_variance"], results["target_variance"], rtol=1e-6, atol=1e-6)
+    assert np.isclose(results["model_snr"], results["target_snr"], rtol=1e-6, atol=1e-6)
+    assert np.isfinite(results["fitted_beta_0"])
+    assert np.isfinite(results["fitted_c"])
+    assert np.isfinite(results["fitted_phi"])
+
+
 if __name__ == "__main__":
     for scenario in NORMAL_SCENARIOS:
         test_normal_regressor_synthetic_calibration(scenario)
@@ -632,3 +784,5 @@ if __name__ == "__main__":
         test_gamma_regressor_synthetic_calibration(scenario)
     for scenario in LOGNORMAL_SCENARIOS:
         test_lognormal_regressor_synthetic_calibration(scenario)
+    for scenario in BETA_SCENARIOS:
+        test_beta_regressor_synthetic_calibration(scenario)

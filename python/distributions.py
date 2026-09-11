@@ -173,6 +173,22 @@ class Beta:
         samples = stats.beta.rvs(self.shape_1, self.shape_2, size=n)
         return _as_1d_array(self.min + (self.max - self.min) * samples)
 
+    def target_mean(self) -> float:
+        if self.shape_1 <= 0 or self.shape_2 <= 0:
+            raise ValueError("shape parameters must be positive")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.beta(self.shape_1, self.shape_2)
+        return float(self.min + (self.max - self.min) * dist.mean())
+
+    def target_variance(self) -> float:
+        if self.shape_1 <= 0 or self.shape_2 <= 0:
+            raise ValueError("shape parameters must be positive")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.beta(self.shape_1, self.shape_2)
+        return float((self.max - self.min) ** 2 * dist.var())
+
 
 @dataclass(frozen=True)
 class Uniform:
