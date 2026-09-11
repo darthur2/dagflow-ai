@@ -1255,3 +1255,104 @@ class CategoricalNominalRegressor:
         for idx, probs in enumerate(row_probs):
             samples[idx] = rng.choice(categories, p=probs)
         return _as_1d_array(samples)
+
+
+@dataclass(frozen=True)
+class CategoricalOrdinalRegressor:
+    target_probabilities: np.ndarray
+    X: np.ndarray
+    beta_1: np.ndarray
+    beta_0: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        probabilities = np.asarray(self.target_probabilities, dtype=float).reshape(-1)
+        X = np.asarray(self.X, dtype=float)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
+        if probabilities.ndim != 1 or probabilities.size < 2:
+            raise ValueError("target_probabilities must be a 1D vector with at least 2 categories")
+        if np.any(probabilities < 0):
+            raise ValueError("target_probabilities must be non-negative")
+        total = float(probabilities.sum())
+        if total <= 0:
+            raise ValueError("target_probabilities must sum to a positive value")
+        probabilities = probabilities / total
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
+        object.__setattr__(self, "target_probabilities", probabilities)
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1", beta_1)
+
+    def _linear_predictor(self) -> np.ndarray:
+        return self.X @ self.beta_1
+
+    def _thresholds(self, beta_0: np.ndarray) -> np.ndarray:
+        beta_0 = np.asarray(beta_0, dtype=float).reshape(-1)
+        if beta_0.size != self.target_probabilities.size - 1:
+            raise ValueError("beta_0 must have K-1 thresholds for K categories")
+        if np.any(np.diff(beta_0) <= 0):
+            raise ValueError("beta_0 thresholds must be strictly increasing")
+        return beta_0
+
+    def _cumulative_probabilities(self, beta_0: np.ndarray) -> np.ndarray:
+        thresholds = self._thresholds(beta_0)
+        eta = self._linear_predictor()
+        cumulative = 1.0 / (1.0 + np.exp(-(thresholds[None, :] - eta[:, None])))
+        first_k = cumulative
+        last = np.ones((len(self.X), 1), dtype=float)
+        return np.column_stack([first_k, last])
+
+    def _category_probabilities(self, beta_0: np.ndarray) -> np.ndarray:
+        cumulative = self._cumulative_probabilities(beta_0)
+        probs = np.empty((len(self.X), self.target_probabilities.size), dtype=float)
+        probs[:, 0] = cumulative[:, 0]
+        for idx in range(1, self.target_probabilities.size - 1):
+            probs[:, idx] = cumulative[:, idx] - cumulative[:, idx - 1]
+        probs[:, -1] = 1.0 - cumulative[:, -2]
+        return probs
+
+    def target_probabilities_value(self, beta_0: np.ndarray) -> np.ndarray:
+        return self._category_probabilities(beta_0).mean(axis=0)
+
+    def _feasible_initial_guess(self) -> np.ndarray:
+        cumulative = np.cumsum(self.target_probabilities[:-1])
+        cumulative = np.clip(cumulative, 1e-6, 1.0 - 1e-6)
+        eta_mean = float(np.mean(self._linear_predictor()))
+        thresholds = np.log(cumulative / (1.0 - cumulative)) + eta_mean
+        return np.maximum.accumulate(thresholds)
+
+    def calibrate(self) -> "CategoricalOrdinalRegressor":
+        if self.beta_0 is not None:
+            return self
+
+        initial_beta_0 = self._feasible_initial_guess()
+
+        def residuals(beta_0: np.ndarray) -> np.ndarray:
+            try:
+                model = self.target_probabilities_value(beta_0)
+                return model - self.target_probabilities
+            except ValueError:
+                return np.full(self.target_probabilities.size, 1e6, dtype=float)
+
+        lower = np.full(self.target_probabilities.size - 1, -np.inf, dtype=float)
+        upper = np.full(self.target_probabilities.size - 1, np.inf, dtype=float)
+        result = optimize.least_squares(residuals, x0=initial_beta_0, bounds=(lower, upper))
+
+        if not result.success:
+            raise ValueError(f"Unable to calibrate CategoricalOrdinalRegressor: {result.message}")
+
+        return replace(self, beta_0=np.asarray(np.maximum.accumulate(result.x), dtype=float))
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None:
+            raise ValueError("CategoricalOrdinalRegressor must be calibrated before sampling")
+
+        probabilities = self._category_probabilities(self.beta_0)
+        row_probs = np.repeat(probabilities, int(np.ceil(n / len(probabilities))), axis=0)[:n]
+        rng = np.random.default_rng()
+        categories = np.arange(probabilities.shape[1])
+        samples = np.empty(n, dtype=int)
+        for idx, probs in enumerate(row_probs):
+            samples[idx] = rng.choice(categories, p=probs)
+        return _as_1d_array(samples)
