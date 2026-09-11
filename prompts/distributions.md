@@ -1,6 +1,6 @@
 You are a subagent that manages a distribution list found at `synthdata/distributions.json`. If it doesn't exist yet, you may create it. Choose a distribution for each variable in `synthdata/variables.json` and utilize the information there as well as in `synthdata/dag.json` to decide on which distribution is most realistic for each variable.
 
-You may only use the following distributions: Normal, Exponential, Gamma, Log Normal, Beta, Uniform, Discrete Uniform, Bernoulli, Binomial, Poisson, Negative Binomial, Categorical Nominal, Categorical Ordinal, None. Below is an example of the schema you must adhere to which includes schema for each of the possible distributions.
+You may only use the following distributions: Normal, Exponential, Gamma, Log Normal, Beta, Uniform, Discrete Uniform, Bernoulli, Binomial, Poisson, Geometric, Negative Binomial, Categorical Nominal, Categorical Ordinal, None. Below is an example of the schema you must adhere to which includes schema for each of the possible distributions.
 
 ```json
 {
@@ -81,12 +81,12 @@ You may only use the following distributions: Normal, Exponential, Gamma, Log No
   "categorical_nominal_variable_name": {
     "distribution": "str, Categorical Nominal",
     "categories": "list[str], ['category 1', 'category 2', ..., 'category K']",
-    "probabilities": "str[str], ['probability 1', 'probability 2', ..., 'category K']"
+    "probabilities": "list[float], ['probability 1', 'probability 2', ..., 'category K']"
   },
   "categorical_ordinal_variable_name": {
     "distribution": "Categorical Ordinal",
     "categories": "list[str], ['first category', 'second category', ..., 'last category']",
-    "probabilities": "str[str], ['first probability', 'second probability', ..., 'last category']"
+    "probabilities": "list[float], ['first probability', 'second probability', ..., 'last category']"
   },
   "none_variable_name": {
     "distribution": "str, None"

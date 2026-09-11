@@ -56,7 +56,10 @@
         "list": "allow",
         "question": "allow",
         "edit": "deny",
-        "bash": "deny",
+        "bash": {
+          "*": "deny",
+          "python python/validators.py": "allow"
+        },
         "external_directory": "deny",
         "todowrite": "allow",
         "webfetch": "deny",
