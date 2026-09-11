@@ -1171,3 +1171,87 @@ class NegativeBinomialRegressor:
             u = rng.uniform(lower, upper)
             samples[idx] = dist.ppf(u)
         return _as_1d_array(np.clip(samples, self.min, self.max))
+
+
+@dataclass(frozen=True)
+class CategoricalNominalRegressor:
+    target_probabilities: np.ndarray
+    X: np.ndarray
+    beta_1: np.ndarray
+    beta_0: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        probabilities = np.asarray(self.target_probabilities, dtype=float).reshape(-1)
+        X = np.asarray(self.X, dtype=float)
+        beta_1 = np.asarray(self.beta_1, dtype=float)
+        if probabilities.ndim != 1 or probabilities.size < 2:
+            raise ValueError("target_probabilities must be a 1D vector with at least 2 categories")
+        if np.any(probabilities < 0):
+            raise ValueError("target_probabilities must be non-negative")
+        total = float(probabilities.sum())
+        if total <= 0:
+            raise ValueError("target_probabilities must sum to a positive value")
+        probabilities = probabilities / total
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if beta_1.ndim != 2:
+            raise ValueError("beta_1 must be a 2D matrix")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one row per column in X")
+        if beta_1.shape[1] != probabilities.size - 1:
+            raise ValueError("beta_1 must have K-1 columns for K response categories")
+        object.__setattr__(self, "target_probabilities", probabilities)
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1", beta_1)
+
+    def _linear_predictor(self, beta_0: np.ndarray) -> np.ndarray:
+        return beta_0 + self.X @ self.beta_1
+
+    def _probabilities(self, beta_0: np.ndarray) -> np.ndarray:
+        eta = self._linear_predictor(beta_0)
+        logits = np.column_stack([eta, np.zeros(len(self.X), dtype=float)])
+        logits = logits - np.max(logits, axis=1, keepdims=True)
+        exp_logits = np.exp(logits)
+        return exp_logits / exp_logits.sum(axis=1, keepdims=True)
+
+    def target_probabilities_value(self, beta_0: np.ndarray) -> np.ndarray:
+        return self._probabilities(beta_0).mean(axis=0)
+
+    def _feasible_initial_guess(self) -> np.ndarray:
+        target = np.clip(self.target_probabilities[:-1], 1e-6, 1.0 - 1e-6)
+        baseline = np.clip(self.target_probabilities[-1], 1e-6, 1.0 - 1e-6)
+        beta_0 = np.log(target / baseline)
+        return beta_0
+
+    def calibrate(self) -> "CategoricalNominalRegressor":
+        if self.beta_0 is not None:
+            return self
+
+        initial_beta_0 = self._feasible_initial_guess()
+
+        def residuals(beta_0: np.ndarray) -> np.ndarray:
+            try:
+                model = self.target_probabilities_value(beta_0)
+                return model[:-1] - self.target_probabilities[:-1]
+            except ValueError:
+                return np.full(self.target_probabilities.size - 1, 1e6, dtype=float)
+
+        result = optimize.least_squares(residuals, x0=initial_beta_0, bounds=(-np.inf, np.inf))
+
+        if not result.success:
+            raise ValueError(f"Unable to calibrate CategoricalNominalRegressor: {result.message}")
+
+        return replace(self, beta_0=np.asarray(result.x, dtype=float))
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None:
+            raise ValueError("CategoricalNominalRegressor must be calibrated before sampling")
+
+        probabilities = self._probabilities(self.beta_0)
+        row_probs = np.repeat(probabilities, int(np.ceil(n / len(probabilities))), axis=0)[:n]
+        rng = np.random.default_rng()
+        categories = np.arange(probabilities.shape[1])
+        samples = np.empty(n, dtype=int)
+        for idx, probs in enumerate(row_probs):
+            samples[idx] = rng.choice(categories, p=probs)
+        return _as_1d_array(samples)
