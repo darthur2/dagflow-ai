@@ -706,3 +706,126 @@ class BernoulliRegressor:
         p = np.repeat(self._probability(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
         samples = stats.bernoulli.rvs(p, size=n)
         return _as_1d_array(samples)
+
+
+@dataclass(frozen=True)
+class BinomialRegressor:
+    n_trials: int
+    target_mean: float
+    target_variance: float
+    target_snr: float
+    X: np.ndarray
+    beta_1_init: np.ndarray
+    min: int
+    max: int
+    beta_0: float | None = None
+    c: float | None = None
+    _support: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
+        X = np.asarray(self.X, dtype=float)
+        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1_init.shape[0]:
+            raise ValueError("beta_1_init must have one coefficient per column in X")
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
+        if self.min < 0 or self.max > self.n_trials:
+            raise ValueError("min and max must lie within [0, n_trials]")
+        if self.target_variance <= 0:
+            raise ValueError("target_variance must be positive")
+        if self.target_snr <= 0:
+            raise ValueError("target_snr must be positive")
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "_support", np.arange(self.min, self.max + 1, dtype=float))
+
+    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
+        return beta_0 + self.X @ (c * self.beta_1_init)
+
+    def _probability(self, beta_0: float, c: float) -> np.ndarray:
+        eta = self._linear_predictor(beta_0, c)
+        return 1.0 / (1.0 + np.exp(-eta))
+
+    def _row_moments(self, beta_0: float, c: float) -> tuple[np.ndarray, np.ndarray]:
+        p = self._probability(beta_0, c)
+        mean = np.empty(len(p), dtype=float)
+        var = np.empty(len(p), dtype=float)
+        for idx, current_p in enumerate(p):
+            pmf = stats.binom.pmf(self._support, self.n_trials, current_p)
+            mass = float(np.sum(pmf))
+            if mass <= 0:
+                raise ValueError("truncation interval has zero probability mass")
+            pmf = pmf / mass
+            current_mean = float(np.sum(self._support * pmf))
+            current_second = float(np.sum((self._support**2) * pmf))
+            mean[idx] = current_mean
+            var[idx] = current_second - current_mean**2
+        return mean, var
+
+    def target_mean_value(self, beta_0: float, c: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0, c)
+        return float(cond_mean.mean())
+
+    def target_variance_value(self, beta_0: float, c: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, c)
+        return float(cond_mean.var() + cond_var.mean())
+
+    def target_snr_value(self, beta_0: float, c: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, c)
+        within = float(cond_var.mean())
+        if within <= 0:
+            raise ValueError("Conditional variance is non-positive")
+        return float(cond_mean.var() / within)
+
+    def _feasible_initial_guess(self) -> tuple[float, float]:
+        mean_prob = np.clip(self.target_mean / self.n_trials, 1e-3, 1.0 - 1e-3)
+        x_mean = np.mean(self.X @ self.beta_1_init)
+        beta_0 = np.log(mean_prob / (1.0 - mean_prob)) - x_mean
+        c = 1.0
+        return beta_0, c
+
+    def calibrate(self) -> "BinomialRegressor":
+        if self.beta_0 is not None and self.c is not None:
+            return self
+
+        initial_beta_0, initial_c = self._feasible_initial_guess()
+
+        def residuals(params: np.ndarray) -> np.ndarray:
+            beta_0, c = params
+            try:
+                mean_residual = self.target_mean_value(beta_0, c) - self.target_mean
+                variance_residual = self.target_variance_value(beta_0, c) - self.target_variance
+                snr_residual = self.target_snr_value(beta_0, c) - self.target_snr
+                return np.array([mean_residual, variance_residual, snr_residual], dtype=float)
+            except ValueError:
+                return np.array([1e6, 1e6, 1e6], dtype=float)
+
+        result = optimize.least_squares(
+            residuals,
+            x0=np.array([initial_beta_0, initial_c], dtype=float),
+            bounds=([-np.inf, 0.0], [np.inf, np.inf]),
+        )
+
+        if not result.success:
+            raise ValueError(f"Unable to calibrate BinomialRegressor: {result.message}")
+
+        beta_0, c = result.x
+        return replace(self, beta_0=float(beta_0), c=float(c))
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None or self.c is None:
+            raise ValueError("BinomialRegressor must be calibrated before sampling")
+
+        p = np.repeat(self._probability(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        samples = np.empty(n, dtype=float)
+        rng = np.random.default_rng()
+        for idx, current_p in enumerate(p):
+            dist = stats.binom(self.n_trials, current_p)
+            lower = dist.cdf(self.min - 1)
+            upper = dist.cdf(self.max)
+            u = rng.uniform(lower, upper)
+            samples[idx] = dist.ppf(u)
+        return _as_1d_array(np.clip(samples, self.min, self.max))
