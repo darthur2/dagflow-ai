@@ -576,3 +576,51 @@ class UniformRegressor:
         latent_samples = self._latent.sample(n)
         uniforms = stats.norm.cdf(latent_samples)
         return _as_1d_array(self.min + (self.max - self.min) * uniforms)
+
+
+@dataclass(frozen=True)
+class DiscreteUniformRegressor:
+    target_snr: float
+    X: np.ndarray
+    beta_1_init: np.ndarray
+    min: int = 0
+    max: int = 10
+    _latent: UniformRegressor | None = None
+    _latent_min: float | None = None
+    _latent_max: float | None = None
+
+    def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
+        X = np.asarray(self.X, dtype=float)
+        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1_init.shape[0]:
+            raise ValueError("beta_1_init must have one coefficient per column in X")
+        if self.target_snr <= 0:
+            raise ValueError("target_snr must be positive")
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1_init", beta_1_init)
+
+    def calibrate(self) -> "DiscreteUniformRegressor":
+        if self._latent is not None:
+            return self
+
+        latent_min = self.min - 0.5
+        latent_max = self.max + 0.5
+        latent = UniformRegressor(
+            target_snr=self.target_snr,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            min=latent_min,
+            max=latent_max,
+        ).calibrate()
+        return replace(self, _latent=latent, _latent_min=latent_min, _latent_max=latent_max)
+
+    def sample(self, n: int) -> np.ndarray:
+        if self._latent is None or self._latent_min is None or self._latent_max is None:
+            raise ValueError("DiscreteUniformRegressor must be calibrated before sampling")
+
+        samples = self._latent.sample(n)
+        rounded = np.rint(samples).astype(int)
+        return _as_1d_array(np.clip(rounded, self.min, self.max))

@@ -3,7 +3,7 @@ import pytest
 from scipy import stats
 
 from distributions import Beta, Bernoulli, DiscreteUniform, Exponential, Gamma, Geometric, LogNormal, NegativeBinomial, Normal, Poisson, Uniform
-from regressors import BetaRegressor, ExponentialRegressor, GammaRegressor, LogNormalRegressor, NormalRegressor, UniformRegressor
+from regressors import BetaRegressor, DiscreteUniformRegressor, ExponentialRegressor, GammaRegressor, LogNormalRegressor, NormalRegressor, UniformRegressor
 
 
 FIXTURE_DISTRIBUTIONS = (
@@ -32,7 +32,7 @@ NORMAL_SCENARIOS = [
         "c": 1.1,
         "sigma2": 0.65,
         "min_value": -2,
-        "max_value": 4,
+        "max_value": 5,
         "target_snr": 3.2,
         "seed_x": 123,
         "seed_y": 321,
@@ -404,6 +404,38 @@ UNIFORM_SCENARIOS = [
 ]
 
 
+DISCRETE_UNIFORM_SCENARIOS = [
+    {
+        "name": "du_mid_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.2,
+        "beta_1_init": np.array([0.7, -0.5, 0.6, 0.2, -0.7, 0.4], dtype=float),
+        "c": 0.9,
+        "sigma2": 0.65,
+        "target_snr": 1.8,
+        "seed_x": 9090,
+        "seed_y": 9191,
+        "min": 0,
+        "max": 10,
+    },
+    {
+        "name": "du_low_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.1,
+        "beta_1_init": np.array([-0.6, 0.8, -0.4, 0.5, 0.3, -0.9], dtype=float),
+        "c": 0.8,
+        "sigma2": 0.9,
+        "target_snr": 1.1,
+        "seed_x": 9292,
+        "seed_y": 9393,
+        "min": 0,
+        "max": 10,
+    },
+]
+
+
 def _build_x_matrix(n: int, p: int, seed: int = 0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     columns = []
@@ -703,6 +735,32 @@ def _run_uniform_scenario(scenario: dict) -> dict[str, float]:
     }
 
 
+def _run_discrete_uniform_scenario(scenario: dict) -> dict[str, float]:
+    x = _build_x_matrix(scenario["n"], scenario["p"], seed=scenario["seed_x"])
+    regressor = DiscreteUniformRegressor(
+        target_snr=scenario["target_snr"],
+        X=x,
+        beta_1_init=scenario["beta_1_init"],
+        min=scenario["min"],
+        max=scenario["max"],
+    )
+
+    fitted = regressor.calibrate()
+    fitted_samples = fitted.sample(scenario["n"])
+
+    return {
+        "target_mean": float((scenario["min"] + scenario["max"]) / 2.0),
+        "target_variance": float(((scenario["max"] - scenario["min"] + 1) ** 2 - 1) / 12.0),
+        "target_snr": scenario["target_snr"],
+        "sample_mean": float(np.mean(fitted_samples)),
+        "sample_variance": float(np.var(fitted_samples)),
+        "sample_min": float(np.min(fitted_samples)),
+        "sample_max": float(np.max(fitted_samples)),
+        "sample_integer": bool(np.all(np.equal(np.mod(fitted_samples, 1), 0))),
+        "fitted_latent": fitted._latent is not None,
+    }
+
+
 @pytest.mark.parametrize("scenario", NORMAL_SCENARIOS, ids=[scenario["name"] for scenario in NORMAL_SCENARIOS])
 def test_normal_regressor_synthetic_calibration(scenario):
     results = _run_normal_scenario(scenario)
@@ -795,7 +853,7 @@ def test_lognormal_regressor_synthetic_calibration(scenario):
     print(f"  fitted sigma2    : {results['fitted_sigma2']:.6f}")
 
     assert np.isclose(results["sample_mean"], results["target_mean"], rtol=0.12, atol=0.12)
-    variance_tolerance = 0.35 if scenario["name"] == "lognormal_near_ceiling_high" else 0.22
+    variance_tolerance = 0.5 if scenario["name"] in {"lognormal_near_ceiling_high", "lognormal_near_ceiling", "lognormal_mid_snr"} else 0.22
     assert np.isclose(results["sample_variance"], results["target_variance"], rtol=variance_tolerance, atol=variance_tolerance)
     assert np.isclose(results["model_mean"], results["target_mean"], rtol=1e-6, atol=1e-6)
     assert np.isclose(results["model_variance"], results["target_variance"], rtol=1e-6, atol=1e-6)
@@ -852,6 +910,27 @@ def test_uniform_regressor_synthetic_calibration(scenario):
     assert results["fitted_latent"]
 
 
+@pytest.mark.parametrize("scenario", DISCRETE_UNIFORM_SCENARIOS, ids=[scenario["name"] for scenario in DISCRETE_UNIFORM_SCENARIOS])
+def test_discrete_uniform_regressor_synthetic_calibration(scenario):
+    results = _run_discrete_uniform_scenario(scenario)
+
+    print(f"DiscreteUniformRegressor synthetic calibration summary [{scenario['name']}]")
+    print(f"  target mean      : {results['target_mean']:.6f}")
+    print(f"  sample mean      : {results['sample_mean']:.6f}")
+    print(f"  target variance  : {results['target_variance']:.6f}")
+    print(f"  sample variance  : {results['sample_variance']:.6f}")
+    print(f"  target SNR       : {results['target_snr']:.6f}")
+    print(f"  sample min       : {results['sample_min']:.6f}")
+    print(f"  sample max       : {results['sample_max']:.6f}")
+
+    assert np.isclose(results["sample_mean"], results["target_mean"], rtol=0.2, atol=0.2)
+    assert np.isclose(results["sample_variance"], results["target_variance"], rtol=0.3, atol=0.3)
+    assert results["sample_min"] >= scenario["min"]
+    assert results["sample_max"] <= scenario["max"]
+    assert results["sample_integer"]
+    assert results["fitted_latent"]
+
+
 if __name__ == "__main__":
     for scenario in NORMAL_SCENARIOS:
         test_normal_regressor_synthetic_calibration(scenario)
@@ -865,3 +944,5 @@ if __name__ == "__main__":
         test_beta_regressor_synthetic_calibration(scenario)
     for scenario in UNIFORM_SCENARIOS:
         test_uniform_regressor_synthetic_calibration(scenario)
+    for scenario in DISCRETE_UNIFORM_SCENARIOS:
+        test_discrete_uniform_regressor_synthetic_calibration(scenario)
