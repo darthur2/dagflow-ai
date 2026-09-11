@@ -530,3 +530,49 @@ class BetaRegressor:
         mu = np.repeat(self._mu(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
         samples = stats.beta.rvs(self.phi * mu, self.phi * (1.0 - mu), size=n)
         return _as_1d_array(samples)
+
+
+@dataclass(frozen=True)
+class UniformRegressor:
+    target_snr: float
+    X: np.ndarray
+    beta_1_init: np.ndarray
+    min: float = -10.0
+    max: float = 10.0
+    _latent: NormalRegressor | None = None
+
+    def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
+        X = np.asarray(self.X, dtype=float)
+        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1_init.shape[0]:
+            raise ValueError("beta_1_init must have one coefficient per column in X")
+        if self.target_snr <= 0:
+            raise ValueError("target_snr must be positive")
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1_init", beta_1_init)
+
+    def calibrate(self) -> "UniformRegressor":
+        if self._latent is not None:
+            return self
+
+        latent = NormalRegressor(
+            target_mean=0.0,
+            target_variance=1.0,
+            min=-10.0,
+            max=10.0,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            target_snr=self.target_snr,
+        ).calibrate()
+        return replace(self, _latent=latent)
+
+    def sample(self, n: int) -> np.ndarray:
+        if self._latent is None:
+            raise ValueError("UniformRegressor must be calibrated before sampling")
+
+        latent_samples = self._latent.sample(n)
+        uniforms = stats.norm.cdf(latent_samples)
+        return _as_1d_array(self.min + (self.max - self.min) * uniforms)
