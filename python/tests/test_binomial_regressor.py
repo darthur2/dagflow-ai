@@ -68,12 +68,10 @@ def run_binomial_scenario(scenario: dict) -> dict[str, float]:
         seed=scenario["seed_y"],
     )
     target_mean = float(np.mean(samples))
-    target_variance = float(np.var(samples))
 
     regressor = BinomialRegressor(
         n_trials=scenario["n_trials"],
         target_mean=target_mean,
-        target_variance=target_variance,
         target_snr=scenario["target_snr"],
         X=x,
         beta_1_init=scenario["beta_1_init"],
@@ -84,18 +82,14 @@ def run_binomial_scenario(scenario: dict) -> dict[str, float]:
     fitted = regressor.calibrate()
     fitted_samples = fitted.sample(scenario["n"])
     model_mean = float(fitted.target_mean_value(fitted.beta_0, fitted.c))
-    model_variance = float(fitted.target_variance_value(fitted.beta_0, fitted.c))
     model_snr = float(fitted.target_snr_value(fitted.beta_0, fitted.c))
 
     return {
         "target_mean": target_mean,
-        "target_variance": target_variance,
         "target_snr": scenario["target_snr"],
         "model_mean": model_mean,
-        "model_variance": model_variance,
         "model_snr": model_snr,
         "sample_mean": float(np.mean(fitted_samples)),
-        "sample_variance": float(np.var(fitted_samples)),
         "sample_min": float(np.min(fitted_samples)),
         "sample_max": float(np.max(fitted_samples)),
         "sample_integer": bool(np.all(np.equal(np.mod(fitted_samples, 1), 0))),
@@ -112,18 +106,13 @@ def test_binomial_regressor_synthetic_calibration():
         print(f"  target mean      : {results['target_mean']:.6f}")
         print(f"  model mean       : {results['model_mean']:.6f}")
         print(f"  sample mean      : {results['sample_mean']:.6f}")
-        print(f"  target variance  : {results['target_variance']:.6f}")
-        print(f"  model variance   : {results['model_variance']:.6f}")
-        print(f"  sample variance  : {results['sample_variance']:.6f}")
         print(f"  target SNR       : {results['target_snr']:.6f}")
         print(f"  model SNR        : {results['model_snr']:.6f}")
         print(f"  fitted beta_0    : {results['fitted_beta_0']:.6f}")
         print(f"  fitted c         : {results['fitted_c']:.6f}")
 
         assert np.isclose(results["sample_mean"], results["target_mean"], rtol=0.18, atol=0.18)
-        assert np.isclose(results["sample_variance"], results["target_variance"], rtol=0.3, atol=0.3)
         assert np.isclose(results["model_mean"], results["target_mean"], rtol=0.04, atol=0.04)
-        assert np.isclose(results["model_variance"], results["target_variance"], rtol=0.12, atol=0.12)
         assert np.isclose(results["model_snr"], results["target_snr"], rtol=0.25, atol=0.25)
         assert results["sample_integer"]
         assert results["sample_min"] >= scenario["min"]

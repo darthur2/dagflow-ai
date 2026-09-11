@@ -4,9 +4,9 @@ import numpy as np
 from scipy import optimize, stats
 
 try:
-    from distributions import Normal
+    from distributions import Geometric, Normal, Poisson, Binomial
 except ImportError:  # pragma: no cover
-    from .distributions import Normal
+    from .distributions import Geometric, Normal, Poisson, Binomial
 
 
 def _validate_bounds(min_value, max_value) -> None:
@@ -712,7 +712,6 @@ class BernoulliRegressor:
 class BinomialRegressor:
     n_trials: int
     target_mean: float
-    target_variance: float
     target_snr: float
     X: np.ndarray
     beta_1_init: np.ndarray
@@ -734,8 +733,6 @@ class BinomialRegressor:
             raise ValueError("n_trials must be >= 1")
         if self.min < 0 or self.max > self.n_trials:
             raise ValueError("min and max must lie within [0, n_trials]")
-        if self.target_variance <= 0:
-            raise ValueError("target_variance must be positive")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
         object.__setattr__(self, "X", X)
@@ -749,32 +746,29 @@ class BinomialRegressor:
         eta = self._linear_predictor(beta_0, c)
         return 1.0 / (1.0 + np.exp(-eta))
 
-    def _row_moments(self, beta_0: float, c: float) -> tuple[np.ndarray, np.ndarray]:
-        p = self._probability(beta_0, c)
-        mean = np.empty(len(p), dtype=float)
-        var = np.empty(len(p), dtype=float)
-        for idx, current_p in enumerate(p):
-            pmf = stats.binom.pmf(self._support, self.n_trials, current_p)
-            mass = float(np.sum(pmf))
-            if mass <= 0:
-                raise ValueError("truncation interval has zero probability mass")
-            pmf = pmf / mass
-            current_mean = float(np.sum(self._support * pmf))
-            current_second = float(np.sum((self._support**2) * pmf))
-            mean[idx] = current_mean
-            var[idx] = current_second - current_mean**2
-        return mean, var
-
     def target_mean_value(self, beta_0: float, c: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, c)
-        return float(cond_mean.mean())
-
-    def target_variance_value(self, beta_0: float, c: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c)
-        return float(cond_mean.var() + cond_var.mean())
+        p = self._probability(beta_0, c)
+        means = np.empty(len(p), dtype=float)
+        for idx, current_p in enumerate(p):
+            means[idx] = Binomial(self.n_trials, float(current_p), self.min, self.max).target_mean()
+        return float(means.mean())
 
     def target_snr_value(self, beta_0: float, c: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c)
+        p = self._probability(beta_0, c)
+        cond_mean = np.empty(len(p), dtype=float)
+        cond_var = np.empty(len(p), dtype=float)
+        for idx, current_p in enumerate(p):
+            dist = stats.binom(self.n_trials, float(current_p))
+            lower = dist.cdf(self.min - 1)
+            upper = dist.cdf(self.max)
+            if lower >= upper:
+                raise ValueError("truncation interval has zero probability mass")
+            pmf = dist.pmf(self._support)
+            pmf = pmf / float(np.sum(pmf))
+            current_mean = float(np.sum(self._support * pmf))
+            current_second = float(np.sum((self._support**2) * pmf))
+            cond_mean[idx] = current_mean
+            cond_var[idx] = current_second - current_mean**2
         within = float(cond_var.mean())
         if within <= 0:
             raise ValueError("Conditional variance is non-positive")
@@ -797,11 +791,10 @@ class BinomialRegressor:
             beta_0, c = params
             try:
                 mean_residual = self.target_mean_value(beta_0, c) - self.target_mean
-                variance_residual = self.target_variance_value(beta_0, c) - self.target_variance
                 snr_residual = self.target_snr_value(beta_0, c) - self.target_snr
-                return np.array([mean_residual, variance_residual, snr_residual], dtype=float)
+                return np.array([mean_residual, snr_residual], dtype=float)
             except ValueError:
-                return np.array([1e6, 1e6, 1e6], dtype=float)
+                return np.array([1e6, 1e6], dtype=float)
 
         result = optimize.least_squares(
             residuals,
@@ -865,28 +858,29 @@ class PoissonRegressor:
     def _rate(self, beta_0: float, c: float) -> np.ndarray:
         return np.exp(self._linear_predictor(beta_0, c))
 
-    def _row_moments(self, beta_0: float, c: float) -> tuple[np.ndarray, np.ndarray]:
-        lam = self._rate(beta_0, c)
-        mean = np.empty(len(lam), dtype=float)
-        var = np.empty(len(lam), dtype=float)
-        for idx, current_lam in enumerate(lam):
-            pmf = stats.poisson.pmf(self._support, current_lam)
-            mass = float(np.sum(pmf))
-            if mass <= 0:
-                raise ValueError("truncation interval has zero probability mass")
-            pmf = pmf / mass
-            current_mean = float(np.sum(self._support * pmf))
-            current_second = float(np.sum((self._support**2) * pmf))
-            mean[idx] = current_mean
-            var[idx] = current_second - current_mean**2
-        return mean, var
-
     def target_mean_value(self, beta_0: float, c: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, c)
-        return float(cond_mean.mean())
+        rates = self._rate(beta_0, c)
+        means = np.empty(len(rates), dtype=float)
+        for idx, current_rate in enumerate(rates):
+            means[idx] = Poisson(float(current_rate), self.min, self.max).target_mean()
+        return float(means.mean())
 
     def target_snr_value(self, beta_0: float, c: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c)
+        rates = self._rate(beta_0, c)
+        cond_mean = np.empty(len(rates), dtype=float)
+        cond_var = np.empty(len(rates), dtype=float)
+        for idx, current_rate in enumerate(rates):
+            dist = stats.poisson(float(current_rate))
+            lower = dist.cdf(self.min - 1)
+            upper = dist.cdf(self.max)
+            if lower >= upper:
+                raise ValueError("truncation interval has zero probability mass")
+            pmf = dist.pmf(self._support)
+            pmf = pmf / float(np.sum(pmf))
+            current_mean = float(np.sum(self._support * pmf))
+            current_second = float(np.sum((self._support**2) * pmf))
+            cond_mean[idx] = current_mean
+            cond_var[idx] = current_second - current_mean**2
         within = float(cond_var.mean())
         if within <= 0:
             raise ValueError("Conditional variance is non-positive")
@@ -975,20 +969,30 @@ class GeometricRegressor:
         eta = self._linear_predictor(beta_0, c)
         return 1.0 / (1.0 + np.exp(-eta))
 
-    def _row_moments(self, beta_0: float, c: float) -> tuple[np.ndarray, np.ndarray]:
-        p = self._probability(beta_0, c)
-        mean = (1.0 - p) / p
-        var = (1.0 - p) / (p**2)
-        if np.any(~np.isfinite(mean)) or np.any(~np.isfinite(var)):
-            raise ValueError("invalid geometric moments")
-        return mean, var
-
     def target_mean_value(self, beta_0: float, c: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, c)
-        return float(cond_mean.mean())
+        probs = self._probability(beta_0, c)
+        means = np.empty(len(probs), dtype=float)
+        for idx, current_p in enumerate(probs):
+            means[idx] = Geometric(float(current_p), self.min, self.max).target_mean()
+        return float(means.mean())
 
     def target_snr_value(self, beta_0: float, c: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c)
+        probs = self._probability(beta_0, c)
+        cond_mean = np.empty(len(probs), dtype=float)
+        cond_var = np.empty(len(probs), dtype=float)
+        for idx, current_p in enumerate(probs):
+            dist = stats.nbinom(1, float(current_p))
+            lower = dist.cdf(self.min - 1)
+            upper = dist.cdf(self.max)
+            if lower >= upper:
+                raise ValueError("truncation interval has zero probability mass")
+            pmf = dist.pmf(np.arange(self.min, self.max + 1, dtype=float))
+            pmf = pmf / float(np.sum(pmf))
+            support = np.arange(self.min, self.max + 1, dtype=float)
+            current_mean = float(np.sum(support * pmf))
+            current_second = float(np.sum((support**2) * pmf))
+            cond_mean[idx] = current_mean
+            cond_var[idx] = current_second - current_mean**2
         within = float(cond_var.mean())
         if within <= 0:
             raise ValueError("Conditional variance is non-positive")

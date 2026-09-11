@@ -243,6 +243,20 @@ class Binomial:
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(dist.ppf(uniforms))
 
+    def target_mean(self) -> float:
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.binom(self.n_trials, self.success_prob)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+
 
 @dataclass(frozen=True)
 class Poisson:
@@ -264,6 +278,18 @@ class Poisson:
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(dist.ppf(uniforms))
 
+    def target_mean(self) -> float:
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.poisson(self.rate)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+
 
 @dataclass(frozen=True)
 class Geometric:
@@ -284,6 +310,18 @@ class Geometric:
 
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(dist.ppf(uniforms))
+
+    def target_mean(self) -> float:
+        if not 0.0 < self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in (0, 1]")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.nbinom(1, self.success_prob)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
 
 
 @dataclass(frozen=True)
