@@ -323,6 +323,20 @@ class Geometric:
             raise ValueError("truncation interval has zero probability mass")
         return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
 
+    def target_variance(self) -> float:
+        if not 0.0 < self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in (0, 1]")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.nbinom(1, self.success_prob)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
+        return second_moment - mean**2
+
 
 @dataclass(frozen=True)
 class NegativeBinomial:
@@ -347,6 +361,38 @@ class NegativeBinomial:
 
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(dist.ppf(uniforms))
+
+    def target_mean(self) -> float:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.mean < 0:
+            raise ValueError("mean must be non-negative")
+        _validate_bounds(self.min, self.max)
+
+        p = self.shape / (self.shape + self.mean) if self.mean > 0 else 1.0
+        dist = stats.nbinom(self.shape, p)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+
+    def target_variance(self) -> float:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.mean < 0:
+            raise ValueError("mean must be non-negative")
+        _validate_bounds(self.min, self.max)
+
+        p = self.shape / (self.shape + self.mean) if self.mean > 0 else 1.0
+        dist = stats.nbinom(self.shape, p)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
+        return second_moment - mean**2
 
 
 @dataclass(frozen=True)
