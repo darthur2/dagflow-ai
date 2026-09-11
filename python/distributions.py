@@ -80,6 +80,34 @@ class Gamma:
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(dist.ppf(uniforms))
 
+    def target_mean(self) -> float:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
+        lower = dist.cdf(self.min)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+
+    def target_variance(self) -> float:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
+        lower = dist.cdf(self.min)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True) - dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True) ** 2)
+
 
 @dataclass(frozen=True)
 class LogNormal:

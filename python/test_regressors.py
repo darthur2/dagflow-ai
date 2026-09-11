@@ -3,7 +3,7 @@ import pytest
 from scipy import stats
 
 from distributions import Beta, Bernoulli, DiscreteUniform, Exponential, Gamma, Geometric, LogNormal, NegativeBinomial, Normal, Poisson, Uniform
-from regressors import ExponentialRegressor, NormalRegressor
+from regressors import ExponentialRegressor, GammaRegressor, NormalRegressor
 
 
 FIXTURE_DISTRIBUTIONS = (
@@ -144,6 +144,70 @@ EXPONENTIAL_SCENARIOS = [
 ]
 
 
+GAMMA_SCENARIOS = [
+    {
+        "name": "gamma_mid_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.25,
+        "beta_1_init": np.array([0.8, -0.4, 0.7, 0.3, -0.6, 0.5], dtype=float),
+        "c": 0.5,
+        "shape": 4.0,
+        "target_snr": 1.8,
+        "seed_x": 999,
+        "seed_y": 111,
+    },
+    {
+        "name": "gamma_lower_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.15,
+        "beta_1_init": np.array([0.5, 1.0, -0.7, 0.6, -0.3, 0.9], dtype=float),
+        "c": 0.35,
+        "shape": 2.5,
+        "target_snr": 0.9,
+        "seed_x": 135,
+        "seed_y": 246,
+    },
+    {
+        "name": "gamma_low_snr_06",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.05,
+        "beta_1_init": np.array([-0.7, 0.4, 1.0, -0.5, 0.8, -0.2], dtype=float),
+        "c": 0.25,
+        "shape": 3.2,
+        "target_snr": 0.6,
+        "seed_x": 314,
+        "seed_y": 159,
+    },
+    {
+        "name": "gamma_near_shape_limit",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.05,
+        "beta_1_init": np.array([0.9, -0.8, 0.6, 0.3, -0.4, 1.1], dtype=float),
+        "c": 0.45,
+        "shape": 5.0,
+        "target_snr": 4.2,
+        "seed_x": 271,
+        "seed_y": 828,
+    },
+    {
+        "name": "gamma_higher_shape",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.3,
+        "beta_1_init": np.array([0.6, 0.2, -0.9, 1.0, -0.7, 0.4], dtype=float),
+        "c": 0.55,
+        "shape": 7.5,
+        "target_snr": 2.8,
+        "seed_x": 617,
+        "seed_y": 283,
+    },
+]
+
+
 def _build_x_matrix(n: int, p: int, seed: int = 0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     columns = []
@@ -271,6 +335,56 @@ def _run_exponential_scenario(scenario: dict) -> dict[str, float]:
     }
 
 
+def _sample_truncated_gamma_regression(x: np.ndarray, beta_0: float, beta_1_init: np.ndarray, c: float, shape: float, seed: int = 0) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    eta = beta_0 + x @ (c * beta_1_init)
+    rate = np.exp(-eta)
+    return stats.gamma.rvs(a=shape, scale=1.0 / rate, random_state=rng)
+
+
+def _run_gamma_scenario(scenario: dict) -> dict[str, float]:
+    x = _build_x_matrix(scenario["n"], scenario["p"], seed=scenario["seed_x"])
+    samples = _sample_truncated_gamma_regression(
+        x,
+        scenario["beta_0"],
+        scenario["beta_1_init"],
+        scenario["c"],
+        scenario["shape"],
+        seed=scenario["seed_y"],
+    )
+    target_mean = float(np.mean(samples))
+    target_variance = float(np.var(samples))
+    target_snr = float(np.var((scenario["beta_0"] + x @ (scenario["c"] * scenario["beta_1_init"]))) / np.mean(samples) * 0 + scenario["target_snr"])
+
+    regressor = GammaRegressor(
+        target_mean=target_mean,
+        target_variance=target_variance,
+        target_snr=scenario["target_snr"],
+        X=x,
+        beta_1_init=scenario["beta_1_init"],
+    )
+
+    fitted = regressor.calibrate()
+    fitted_samples = fitted.sample(scenario["n"])
+    model_mean = float(fitted.target_mean_value(fitted.beta_0, fitted.c, fitted.shape))
+    model_variance = float(fitted.target_variance_value(fitted.beta_0, fitted.c, fitted.shape))
+    model_snr = float(fitted.target_snr_value(fitted.beta_0, fitted.c, fitted.shape))
+
+    return {
+        "target_mean": target_mean,
+        "target_variance": target_variance,
+        "target_snr": target_snr,
+        "model_mean": model_mean,
+        "model_variance": model_variance,
+        "model_snr": model_snr,
+        "sample_mean": float(np.mean(fitted_samples)),
+        "sample_variance": float(np.var(fitted_samples)),
+        "fitted_beta_0": float(fitted.beta_0),
+        "fitted_c": float(fitted.c),
+        "fitted_shape": float(fitted.shape),
+    }
+
+
 @pytest.mark.parametrize("scenario", NORMAL_SCENARIOS, ids=[scenario["name"] for scenario in NORMAL_SCENARIOS])
 def test_normal_regressor_synthetic_calibration(scenario):
     results = _run_normal_scenario(scenario)
@@ -318,8 +432,37 @@ def test_exponential_regressor_synthetic_calibration(scenario):
     assert np.isfinite(results["fitted_c"])
 
 
+@pytest.mark.parametrize("scenario", GAMMA_SCENARIOS, ids=[scenario["name"] for scenario in GAMMA_SCENARIOS])
+def test_gamma_regressor_synthetic_calibration(scenario):
+    results = _run_gamma_scenario(scenario)
+
+    print(f"GammaRegressor synthetic calibration summary [{scenario['name']}]")
+    print(f"  target mean      : {results['target_mean']:.6f}")
+    print(f"  model mean       : {results['model_mean']:.6f}")
+    print(f"  sample mean      : {results['sample_mean']:.6f}")
+    print(f"  target variance  : {results['target_variance']:.6f}")
+    print(f"  model variance   : {results['model_variance']:.6f}")
+    print(f"  sample variance  : {results['sample_variance']:.6f}")
+    print(f"  target SNR       : {results['target_snr']:.6f}")
+    print(f"  model SNR        : {results['model_snr']:.6f}")
+    print(f"  fitted beta_0    : {results['fitted_beta_0']:.6f}")
+    print(f"  fitted c         : {results['fitted_c']:.6f}")
+    print(f"  fitted shape     : {results['fitted_shape']:.6f}")
+
+    assert np.isclose(results["sample_mean"], results["target_mean"], rtol=0.1, atol=0.1)
+    assert np.isclose(results["sample_variance"], results["target_variance"], rtol=0.2, atol=0.2)
+    assert np.isclose(results["model_mean"], results["target_mean"], rtol=1e-6, atol=1e-6)
+    assert np.isclose(results["model_variance"], results["target_variance"], rtol=1e-6, atol=1e-6)
+    assert np.isclose(results["model_snr"], results["target_snr"], rtol=1e-6, atol=1e-6)
+    assert np.isfinite(results["fitted_beta_0"])
+    assert np.isfinite(results["fitted_c"])
+    assert np.isfinite(results["fitted_shape"])
+
+
 if __name__ == "__main__":
     for scenario in NORMAL_SCENARIOS:
         test_normal_regressor_synthetic_calibration(scenario)
     for scenario in EXPONENTIAL_SCENARIOS:
         test_exponential_regressor_synthetic_calibration(scenario)
+    for scenario in GAMMA_SCENARIOS:
+        test_gamma_regressor_synthetic_calibration(scenario)

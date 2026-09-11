@@ -233,3 +233,100 @@ class ExponentialRegressor:
             upper = np.exp(-current_lambda * 1000.0)
             samples[idx] = -np.log(lower - u * (lower - upper)) / current_lambda
         return _as_1d_array(samples)
+
+
+@dataclass(frozen=True)
+class GammaRegressor:
+    target_mean: float
+    target_variance: float
+    target_snr: float
+    X: np.ndarray
+    beta_1_init: np.ndarray
+    beta_0: float | None = None
+    c: float | None = None
+    shape: float | None = None
+
+    def __post_init__(self) -> None:
+        X = np.asarray(self.X, dtype=float)
+        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1_init.shape[0]:
+            raise ValueError("beta_1_init must have one coefficient per column in X")
+        if self.target_mean <= 0:
+            raise ValueError("target_mean must be positive")
+        if self.target_variance <= 0:
+            raise ValueError("target_variance must be positive")
+        if self.target_snr <= 0:
+            raise ValueError("target_snr must be positive")
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1_init", beta_1_init)
+
+    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
+        return beta_0 + self.X @ (c * self.beta_1_init)
+
+    def _row_moments(self, beta_0: float, c: float, shape: float) -> tuple[np.ndarray, np.ndarray]:
+        eta = self._linear_predictor(beta_0, c)
+        rate = np.exp(-eta)
+        mean = shape / rate
+        var = shape / (rate**2)
+        return mean, var
+
+    def target_mean_value(self, beta_0: float, c: float, shape: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0, c, shape)
+        return float(cond_mean.mean())
+
+    def target_variance_value(self, beta_0: float, c: float, shape: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, c, shape)
+        return float(cond_mean.var() + cond_var.mean())
+
+    def target_snr_value(self, beta_0: float, c: float, shape: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, c, shape)
+        within = float(cond_var.mean())
+        if within <= 0:
+            raise ValueError("Conditional variance is non-positive")
+        return float(cond_mean.var() / within)
+
+    def _feasible_initial_guess(self) -> tuple[float, float, float]:
+        x_mean = np.mean(self.X @ self.beta_1_init)
+        beta_0 = np.log(self.target_mean / self.target_snr) - x_mean
+        c = 1.0
+        shape = max(self.target_snr, 1.0)
+        return beta_0, c, shape
+
+    def calibrate(self) -> "GammaRegressor":
+        if self.beta_0 is not None and self.c is not None and self.shape is not None:
+            return self
+
+        initial_beta_0, initial_c, initial_shape = self._feasible_initial_guess()
+
+        def residuals(params: np.ndarray) -> np.ndarray:
+            beta_0, c, shape = params
+            try:
+                mean_residual = self.target_mean_value(beta_0, c, shape) - self.target_mean
+                variance_residual = self.target_variance_value(beta_0, c, shape) - self.target_variance
+                snr_residual = self.target_snr_value(beta_0, c, shape) - self.target_snr
+                return np.array([mean_residual, variance_residual, snr_residual], dtype=float)
+            except ValueError:
+                return np.array([1e6, 1e6, 1e6], dtype=float)
+
+        result = optimize.least_squares(
+            residuals,
+            x0=np.array([initial_beta_0, initial_c, initial_shape], dtype=float),
+            bounds=([-np.inf, 0.0, np.finfo(float).tiny], [np.inf, np.inf, np.inf]),
+        )
+
+        if not result.success:
+            raise ValueError(f"Unable to calibrate GammaRegressor: {result.message}")
+
+        beta_0, c, shape = result.x
+        return replace(self, beta_0=float(beta_0), c=float(c), shape=float(shape))
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None or self.c is None or self.shape is None:
+            raise ValueError("GammaRegressor must be calibrated before sampling")
+
+        eta = self._linear_predictor(self.beta_0, self.c)
+        rate = np.exp(-np.repeat(eta, int(np.ceil(n / len(eta))))[:n])
+        samples = stats.gamma.rvs(a=self.shape, scale=1.0 / rate, size=n)
+        return _as_1d_array(samples)
