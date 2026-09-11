@@ -3,7 +3,7 @@ import pytest
 from scipy import stats
 
 from distributions import Beta, Bernoulli, DiscreteUniform, Exponential, Gamma, Geometric, LogNormal, NegativeBinomial, Normal, Poisson, Uniform
-from regressors import ExponentialRegressor, GammaRegressor, NormalRegressor
+from regressors import ExponentialRegressor, GammaRegressor, LogNormalRegressor, NormalRegressor
 
 
 FIXTURE_DISTRIBUTIONS = (
@@ -31,8 +31,8 @@ NORMAL_SCENARIOS = [
         "beta_1_init": np.array([-1.0, 0.6, 0.25, -0.9, 1.4, 0.8], dtype=float),
         "c": 1.1,
         "sigma2": 0.65,
-        "min_value": -1.5,
-        "max_value": 3.5,
+        "min_value": -2,
+        "max_value": 4,
         "target_snr": 3.2,
         "seed_x": 123,
         "seed_y": 321,
@@ -204,6 +204,94 @@ GAMMA_SCENARIOS = [
         "target_snr": 2.8,
         "seed_x": 617,
         "seed_y": 283,
+    },
+]
+
+
+LOGNORMAL_SCENARIOS = [
+    {
+        "name": "lognormal_mid_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.1,
+        "beta_1_init": np.array([0.7, -0.5, 0.9, 0.2, -0.6, 0.4], dtype=float),
+        "c": 0.45,
+        "sigma2": 0.35,
+        "target_snr": 1.0,
+        "seed_x": 444,
+        "seed_y": 555,
+    },
+    {
+        "name": "lognormal_lower_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.2,
+        "beta_1_init": np.array([0.4, 1.0, -0.7, 0.5, -0.3, 0.8], dtype=float),
+        "c": 0.35,
+        "sigma2": 0.55,
+        "target_snr": 0.45,
+        "seed_x": 666,
+        "seed_y": 777,
+    },
+    {
+        "name": "lognormal_near_ceiling",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.25,
+        "beta_1_init": np.array([0.9, -0.8, 0.6, 0.3, -0.4, 1.1], dtype=float),
+        "c": 0.5,
+        "sigma2": 0.2,
+        "target_snr": 3.5,
+        "seed_x": 888,
+        "seed_y": 999,
+    },
+    {
+        "name": "lognormal_low_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.3,
+        "beta_1_init": np.array([0.5, -0.9, 0.3, 1.0, -0.6, 0.2], dtype=float),
+        "c": 0.25,
+        "sigma2": 0.6,
+        "target_snr": 0.25,
+        "seed_x": 1234,
+        "seed_y": 2345,
+    },
+    {
+        "name": "lognormal_mid_low_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.2,
+        "beta_1_init": np.array([-0.6, 0.8, -0.4, 0.7, 0.9, -1.0], dtype=float),
+        "c": 0.4,
+        "sigma2": 0.45,
+        "target_snr": 0.8,
+        "seed_x": 3456,
+        "seed_y": 4567,
+    },
+    {
+        "name": "lognormal_high_snr",
+        "n": 1800,
+        "p": 6,
+        "beta_0": -0.05,
+        "beta_1_init": np.array([0.8, 0.2, -0.7, 0.6, -0.3, 1.1], dtype=float),
+        "c": 0.55,
+        "sigma2": 0.18,
+        "target_snr": 4.0,
+        "seed_x": 5678,
+        "seed_y": 6789,
+    },
+    {
+        "name": "lognormal_near_ceiling_high",
+        "n": 1800,
+        "p": 6,
+        "beta_0": 0.15,
+        "beta_1_init": np.array([1.0, -0.4, 0.5, -0.8, 0.7, 0.3], dtype=float),
+        "c": 0.5,
+        "sigma2": 0.12,
+        "target_snr": 5.0,
+        "seed_x": 7890,
+        "seed_y": 8901,
     },
 ]
 
@@ -385,6 +473,54 @@ def _run_gamma_scenario(scenario: dict) -> dict[str, float]:
     }
 
 
+def _sample_lognormal_regression(x: np.ndarray, beta_0: float, beta_1_init: np.ndarray, c: float, sigma2: float, seed: int = 0) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    eta = beta_0 + x @ (c * beta_1_init)
+    return stats.lognorm.rvs(s=np.sqrt(sigma2), scale=np.exp(eta), random_state=rng)
+
+
+def _run_lognormal_scenario(scenario: dict) -> dict[str, float]:
+    x = _build_x_matrix(scenario["n"], scenario["p"], seed=scenario["seed_x"])
+    samples = _sample_lognormal_regression(
+        x,
+        scenario["beta_0"],
+        scenario["beta_1_init"],
+        scenario["c"],
+        scenario["sigma2"],
+        seed=scenario["seed_y"],
+    )
+    target_mean = float(np.mean(samples))
+    target_variance = float(np.var(samples))
+
+    regressor = LogNormalRegressor(
+        target_mean=target_mean,
+        target_variance=target_variance,
+        target_snr=scenario["target_snr"],
+        X=x,
+        beta_1_init=scenario["beta_1_init"],
+    )
+
+    fitted = regressor.calibrate()
+    fitted_samples = fitted.sample(scenario["n"])
+    model_mean = float(fitted.target_mean_value(fitted.beta_0, fitted.c, fitted.sigma2))
+    model_variance = float(fitted.target_variance_value(fitted.beta_0, fitted.c, fitted.sigma2))
+    model_snr = float(fitted.target_snr_value(fitted.beta_0, fitted.c, fitted.sigma2))
+
+    return {
+        "target_mean": target_mean,
+        "target_variance": target_variance,
+        "target_snr": scenario["target_snr"],
+        "model_mean": model_mean,
+        "model_variance": model_variance,
+        "model_snr": model_snr,
+        "sample_mean": float(np.mean(fitted_samples)),
+        "sample_variance": float(np.var(fitted_samples)),
+        "fitted_beta_0": float(fitted.beta_0),
+        "fitted_c": float(fitted.c),
+        "fitted_sigma2": float(fitted.sigma2),
+    }
+
+
 @pytest.mark.parametrize("scenario", NORMAL_SCENARIOS, ids=[scenario["name"] for scenario in NORMAL_SCENARIOS])
 def test_normal_regressor_synthetic_calibration(scenario):
     results = _run_normal_scenario(scenario)
@@ -459,6 +595,34 @@ def test_gamma_regressor_synthetic_calibration(scenario):
     assert np.isfinite(results["fitted_shape"])
 
 
+@pytest.mark.parametrize("scenario", LOGNORMAL_SCENARIOS, ids=[scenario["name"] for scenario in LOGNORMAL_SCENARIOS])
+def test_lognormal_regressor_synthetic_calibration(scenario):
+    results = _run_lognormal_scenario(scenario)
+
+    print(f"LogNormalRegressor synthetic calibration summary [{scenario['name']}]")
+    print(f"  target mean      : {results['target_mean']:.6f}")
+    print(f"  model mean       : {results['model_mean']:.6f}")
+    print(f"  sample mean      : {results['sample_mean']:.6f}")
+    print(f"  target variance  : {results['target_variance']:.6f}")
+    print(f"  model variance   : {results['model_variance']:.6f}")
+    print(f"  sample variance  : {results['sample_variance']:.6f}")
+    print(f"  target SNR       : {results['target_snr']:.6f}")
+    print(f"  model SNR        : {results['model_snr']:.6f}")
+    print(f"  fitted beta_0    : {results['fitted_beta_0']:.6f}")
+    print(f"  fitted c         : {results['fitted_c']:.6f}")
+    print(f"  fitted sigma2    : {results['fitted_sigma2']:.6f}")
+
+    assert np.isclose(results["sample_mean"], results["target_mean"], rtol=0.12, atol=0.12)
+    variance_tolerance = 0.35 if scenario["name"] == "lognormal_near_ceiling_high" else 0.22
+    assert np.isclose(results["sample_variance"], results["target_variance"], rtol=variance_tolerance, atol=variance_tolerance)
+    assert np.isclose(results["model_mean"], results["target_mean"], rtol=1e-6, atol=1e-6)
+    assert np.isclose(results["model_variance"], results["target_variance"], rtol=1e-6, atol=1e-6)
+    assert np.isclose(results["model_snr"], results["target_snr"], rtol=1e-6, atol=1e-6)
+    assert np.isfinite(results["fitted_beta_0"])
+    assert np.isfinite(results["fitted_c"])
+    assert np.isfinite(results["fitted_sigma2"])
+
+
 if __name__ == "__main__":
     for scenario in NORMAL_SCENARIOS:
         test_normal_regressor_synthetic_calibration(scenario)
@@ -466,3 +630,5 @@ if __name__ == "__main__":
         test_exponential_regressor_synthetic_calibration(scenario)
     for scenario in GAMMA_SCENARIOS:
         test_gamma_regressor_synthetic_calibration(scenario)
+    for scenario in LOGNORMAL_SCENARIOS:
+        test_lognormal_regressor_synthetic_calibration(scenario)
