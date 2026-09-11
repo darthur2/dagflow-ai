@@ -15,7 +15,7 @@ FIXTURE_DISTRIBUTIONS = (
     Bernoulli(success_prob=0.35),
     stats.binom(n=6, p=0.4),
     Poisson(rate=3.0, min=0, max=12),
-    Geometric(success_prob=0.25, min=1, max=15),
+    Geometric(success_prob=0.25, min=0, max=15),
     NegativeBinomial(shape=4.0, mean=6.0, min=0, max=20),
 )
 

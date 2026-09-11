@@ -938,3 +938,107 @@ class PoissonRegressor:
             u = rng.uniform(lower, upper)
             samples[idx] = dist.ppf(u)
         return _as_1d_array(np.clip(samples, self.min, self.max))
+
+
+@dataclass(frozen=True)
+class GeometricRegressor:
+    target_mean: float
+    target_snr: float
+    X: np.ndarray
+    beta_1_init: np.ndarray
+    min: int = 0
+    max: int = 20
+    beta_0: float | None = None
+    c: float | None = None
+
+    def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
+        X = np.asarray(self.X, dtype=float)
+        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1_init.shape[0]:
+            raise ValueError("beta_1_init must have one coefficient per column in X")
+        if self.min < 0:
+            raise ValueError("min must be >= 0")
+        if self.target_mean <= 0:
+            raise ValueError("target_mean must be positive")
+        if self.target_snr <= 0:
+            raise ValueError("target_snr must be positive")
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1_init", beta_1_init)
+
+    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
+        return beta_0 + self.X @ (c * self.beta_1_init)
+
+    def _probability(self, beta_0: float, c: float) -> np.ndarray:
+        eta = self._linear_predictor(beta_0, c)
+        return 1.0 / (1.0 + np.exp(-eta))
+
+    def _row_moments(self, beta_0: float, c: float) -> tuple[np.ndarray, np.ndarray]:
+        p = self._probability(beta_0, c)
+        mean = (1.0 - p) / p
+        var = (1.0 - p) / (p**2)
+        if np.any(~np.isfinite(mean)) or np.any(~np.isfinite(var)):
+            raise ValueError("invalid geometric moments")
+        return mean, var
+
+    def target_mean_value(self, beta_0: float, c: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0, c)
+        return float(cond_mean.mean())
+
+    def target_snr_value(self, beta_0: float, c: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, c)
+        within = float(cond_var.mean())
+        if within <= 0:
+            raise ValueError("Conditional variance is non-positive")
+        return float(cond_mean.var() / within)
+
+    def _feasible_initial_guess(self) -> tuple[float, float]:
+        p = np.clip(1.0 / (1.0 + self.target_mean), 1e-4, 1.0 - 1e-4)
+        x_mean = np.mean(self.X @ self.beta_1_init)
+        beta_0 = np.log(p / (1.0 - p)) - x_mean
+        c = 1.0
+        return beta_0, c
+
+    def calibrate(self) -> "GeometricRegressor":
+        if self.beta_0 is not None and self.c is not None:
+            return self
+
+        initial_beta_0, initial_c = self._feasible_initial_guess()
+
+        def residuals(params: np.ndarray) -> np.ndarray:
+            beta_0, c = params
+            try:
+                mean_residual = self.target_mean_value(beta_0, c) - self.target_mean
+                snr_residual = self.target_snr_value(beta_0, c) - self.target_snr
+                return np.array([mean_residual, snr_residual], dtype=float)
+            except ValueError:
+                return np.array([1e6, 1e6], dtype=float)
+
+        result = optimize.least_squares(
+            residuals,
+            x0=np.array([initial_beta_0, initial_c], dtype=float),
+            bounds=([-np.inf, 0.0], [np.inf, np.inf]),
+        )
+
+        if not result.success:
+            raise ValueError(f"Unable to calibrate GeometricRegressor: {result.message}")
+
+        beta_0, c = result.x
+        return replace(self, beta_0=float(beta_0), c=float(c))
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None or self.c is None:
+            raise ValueError("GeometricRegressor must be calibrated before sampling")
+
+        p = np.repeat(self._probability(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        samples = np.empty(n, dtype=float)
+        rng = np.random.default_rng()
+        for idx, current_p in enumerate(p):
+            dist = stats.nbinom(1, current_p)
+            lower = dist.cdf(self.min - 1)
+            upper = dist.cdf(self.max)
+            u = rng.uniform(lower, upper)
+            samples[idx] = dist.ppf(u)
+        return _as_1d_array(np.clip(samples, self.min, self.max))

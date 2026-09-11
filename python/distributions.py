@@ -276,7 +276,7 @@ class Geometric:
             raise ValueError("success_prob must be in (0, 1]")
         _validate_bounds(self.min, self.max)
 
-        dist = stats.geom(self.success_prob)
+        dist = stats.nbinom(1, self.success_prob)
         lower = dist.cdf(self.min - 1)
         upper = dist.cdf(self.max)
         if lower >= upper:
