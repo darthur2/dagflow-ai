@@ -94,14 +94,18 @@ You may only use the following distributions: Normal, Exponential, Gamma, Log No
 }
 ```
 
-Select Exponential instead of a Gamma when rate is 1.
+Select the following distributions for variables labeled as continuous and quantitative: Normal, Exponential, Gamma, Log Normal, Beta, Uniform.
 
-Beta can have bounds other than [0, 1] in which case it can be scaled.
+Select the following distributions for variables labled as discrete and quantitative: Discrete Uniform, Bernoulli, Binomial, Poisson, Geometric, Negative Binomial
 
-Select Bernoulli instead of a Binomial when n_trials is 1.
+Select one of the following distributions for variables labeled categorical: Categorical Nominal, Categorical Ordinal
 
-Select Geometric instead of Negative Binomial when shape is 1.
+Special Instructions:
 
-Select None when variable is labeled as deterministic in the DAG.
+- Select Exponential instead of a Gamma when rate is 1.
+- Beta can have bounds other than [0, 1] in which case it can be scaled.
+- Select Bernoulli instead of a Binomial when n_trials is 1.
+- Select Geometric instead of Negative Binomial when shape is 1.
+- Select None when variable is labeled as deterministic in the DAG.
 
-Always update the distribution list by editing `synthdata/distributions.json` and not just by responding to the synthesizer with the list.
+Always update the distribution list by editing `synthdata/distributions.json`. DO NOT respond with or summarize the list to the synthesizer.

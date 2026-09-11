@@ -65,7 +65,7 @@ ALLOWED_QUANTITATIVE_MEASUREMENT_LEVELS = {"Interval", "Nominal"}
 ALLOWED_CATEGORICAL_MEASUREMENT_LEVELS = {"Nominal", "Ordinal"}
 ALLOWED_CLASSIFICATIONS = {"Discrete", "Continuous"}
 ALLOWED_SKEWS = {"Left", "Right", "None"}
-DAG_NODE_TYPES = {"stochastic", "deterministic"}
+DAG_NODE_TYPES = {"Stochastic", "Deterministic"}
 ALLOWED_DISTRIBUTIONS = {
     "Normal",
     "Exponential",
@@ -82,6 +82,21 @@ ALLOWED_DISTRIBUTIONS = {
     "Categorical Nominal",
     "Categorical Ordinal",
     "None",
+}
+
+ALLOWED_DISTRIBUTIONS_BY_VARIABLE_SCHEMA = {
+    "quantitative": {
+        "Continuous": {"Normal", "Exponential", "Gamma", "Log Normal", "Beta", "Uniform"},
+        "Discrete": {
+            "Discrete Uniform",
+            "Bernoulli",
+            "Binomial",
+            "Poisson",
+            "Geometric",
+            "Negative Binomial",
+        },
+    },
+    "categorical": {"Categorical Nominal", "Categorical Ordinal"},
 }
 
 ALLOWED_FORMULA_TRANSFORMATIONS = {"none", "exp", "log", "sqrt", "inverse", "polynomial", "sin", "cos"}
@@ -507,7 +522,7 @@ def validate_dag_structure(dag: dict[str, Any], variable_names: set[str]) -> lis
             errors.append(
                 ValidationError(
                     code="DAG_NODE_TYPE_INVALID",
-                    message="DAG node type must be stochastic or deterministic.",
+                    message="DAG node type must be Stochastic or Deterministic.",
                     path=f"dag.nodes.{node_name}.type",
                     details={"allowed_values": sorted(DAG_NODE_TYPES), "actual_value": node_type},
                 )
@@ -599,6 +614,7 @@ def validate_distributions(distributions: dict[str, Any], variables: dict[str, d
 
     for variable_name in sorted(variable_names & distribution_names):
         entry = distributions[variable_name]
+        variable_data = variables.get(variable_name, {})
         dag_node = dag_nodes.get(variable_name, {}) if isinstance(dag_nodes, dict) else {}
         node_type = dag_node.get("type") if isinstance(dag_node, dict) else None
         is_deterministic = node_type == "Deterministic"
@@ -625,6 +641,39 @@ def validate_distributions(distributions: dict[str, Any], variables: dict[str, d
                 )
             )
             continue
+
+        variable_schema_type, schema_error = classify_variable_schema(variable_name, variable_data)
+        if schema_error is not None:
+            errors.append(
+                ValidationError(
+                    code="DISTRIBUTION_VARIABLE_SCHEMA_INVALID",
+                    message="Variable schema is invalid for distribution validation.",
+                    path=f"variables.{variable_name}",
+                    details={"variable_error": error_to_dict(schema_error)},
+                )
+            )
+            continue
+
+        if variable_schema_type == "quantitative":
+            classification = variable_data.get("classification")
+            allowed_distributions = ALLOWED_DISTRIBUTIONS_BY_VARIABLE_SCHEMA["quantitative"].get(classification, set())
+        else:
+            allowed_distributions = ALLOWED_DISTRIBUTIONS_BY_VARIABLE_SCHEMA["categorical"]
+
+        if distribution not in allowed_distributions:
+            errors.append(
+                ValidationError(
+                    code="DISTRIBUTION_VARIABLE_SCHEMA_MISMATCH",
+                    message="Selected distribution is not allowed for the variable schema.",
+                    path=f"distributions.{variable_name}.distribution",
+                    details={
+                        "variable_schema_type": variable_schema_type,
+                        "classification": variable_data.get("classification"),
+                        "allowed_values": sorted(allowed_distributions),
+                        "actual_value": distribution,
+                    },
+                )
+            )
 
         if is_deterministic and distribution != "None":
             errors.append(
@@ -845,7 +894,7 @@ def validate_variable_uniqueness(data: dict[str, Any]) -> ValidationError | None
 
 
 def normalize_node_type(node_type: Any) -> str:
-    return node_type.strip().lower() if isinstance(node_type, str) else ""
+    return node_type.strip() if isinstance(node_type, str) else ""
 
 
 def normalize_formula_type(formula: dict[str, Any]) -> str:
@@ -1037,7 +1086,7 @@ def validate_formulas_data(formulas_data: dict[str, Any], variables_data: dict[s
         if formula_type == "quantitative":
             snr = formula_data.get("snr")
             dag_node = dag_data.get("nodes", {}).get(variable_name, {}) if isinstance(dag_data.get("nodes"), dict) else {}
-            if isinstance(dag_node, dict) and normalize_node_type(dag_node.get("type")) == "deterministic" and not is_nan(snr):
+            if isinstance(dag_node, dict) and normalize_node_type(dag_node.get("type")) == "Deterministic" and not is_nan(snr):
                 errors.append(ValidationError(code="FORMULA_DETERMINISTIC_SNR_INVALID", message="Deterministic node formulas must have snr set to NaN.", path=f"{variable_name}.snr", details={"actual_value": snr}))
 
         expected_parents = parent_map.get(variable_name, set())
@@ -1134,9 +1183,9 @@ def validate_dag_schema(dag_data: dict[str, Any]) -> list[ValidationError]:
             errors.append(
                 ValidationError(
                     code="DAG_NODE_FIELD_INVALID_VALUE",
-                    message="A DAG node type must be stochastic or deterministic.",
+                    message="A DAG node type must be Stochastic or Deterministic.",
                     path=f"nodes.{node_name}.type",
-                    details={"allowed_values": ["stochastic", "deterministic"], "actual_value": node_type},
+                    details={"allowed_values": ["Stochastic", "Deterministic"], "actual_value": node_type},
                 )
             )
 

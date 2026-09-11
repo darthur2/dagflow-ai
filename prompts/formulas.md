@@ -108,4 +108,4 @@ If transformations are applied, then the name for the variable should be updated
 
 Transformations can be especially useful for modeling nonlinear relationships between variables (e.g., y = ax^w can be represented as log(y) = log(a) + w*log(x)).
 
-Always update the formula list by editing `synthdata/formulas.json` and not just by responding to the synthesizer with the list.
+Always update the formula list by editing `synthdata/formulas.json`. DO NOT respond with or summarize the list to the synthesizer.
