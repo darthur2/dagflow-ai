@@ -6,12 +6,11 @@ The following is a minimal example of a formula list, including the schema for a
 {
   "name_of_quantitative_response_variable": {
     "intercept": "float, intercept of linear predictor",
-    "transformation": "str, one of none, exp, log, sqrt, inverse, polynomial, sin, cos",
     "snr": "float, desired signal to noise ratio",
     "predictors": {
       "name_of_quantitative_predictor": {
         "coefficient": "float, coefficient for predictor",
-        "transformation": "str, one of none, exp, log, sqrt, inverse, polynomial, sin, cos"
+        "transformation": "str, one of none, exp, log, sqrt, inverse, square, cubic, quartic, sin, cos"
       },
       "name_of_categorical_predictor": {
         "reference_category": "str, reference category for categorical predictor",
@@ -34,7 +33,7 @@ The following is a minimal example of a formula list, including the schema for a
         "predictors": {
           "name_of_quantitative_predictor": {
             "coefficient": "float, coefficient for predictor",
-            "transformation": "str, one of none, exp, log, sqrt, inverse, polynomial, sin, cos"
+            "transformation": "str, one of none, exp, log, sqrt, inverse, square, cubic, quartic, sin, cos"
           },
           "name_of_categorical_predictor": {
             "reference_category": "str, reference category for categorical predictor",
@@ -54,7 +53,7 @@ The following is a minimal example of a formula list, including the schema for a
         "predictors": {
           "name_of_quantitative_predictor": {
             "coefficient": "float, coefficient for predictor",
-            "transformation": "str, one of none, exp, log, sqrt, inverse, polynomial, sin, cos"
+            "transformation": "str, one of none, exp, log, sqrt, inverse, square, cubic, quartic, sin, cos"
           },
           "name_of_categorical_predictor": {
             "reference_category": "str, reference category for categorical predictor",
@@ -76,7 +75,7 @@ The following is a minimal example of a formula list, including the schema for a
     "predictors": {
       "name_of_quantitative_predictor": {
         "coefficient": "float, coefficient for predictor",
-        "transformation": "str, one of none, exp, log, sqrt, inverse, polynomial, sin, cos"
+        "transformation": "str, one of none, exp, log, sqrt, inverse, square, cubic, quartic, sin, cos"
       },
       "name_of_categorical_predictor": {
         "reference_category": "str, reference category for categorical predictor",

@@ -99,7 +99,7 @@ ALLOWED_DISTRIBUTIONS_BY_VARIABLE_SCHEMA = {
     "categorical": {"Categorical Nominal", "Categorical Ordinal"},
 }
 
-ALLOWED_FORMULA_TRANSFORMATIONS = {"none", "exp", "log", "sqrt", "inverse", "polynomial", "sin", "cos"}
+ALLOWED_FORMULA_TRANSFORMATIONS = {"none", "exp", "log", "sqrt", "inverse", "square", "cubic", "quartic", "sin", "cos"}
 FORMULA_VARIABLE_TYPES = {"quantitative", "categorical nominal", "categorical ordinal"}
 
 VARIABLE_DISTRIBUTION_FIELDS = {
@@ -948,9 +948,6 @@ def validate_formula_values(formula_name: str, formula_data: dict[str, Any], for
         intercept = formula_data.get("intercept")
         if not isinstance(intercept, (int, float)):
             errors.append(ValidationError(code="FORMULA_FIELD_TYPE_INVALID", message="Quantitative intercept must be numeric.", path=f"{formula_name}.intercept", details={"expected_type": "number", "actual_type": type(intercept).__name__}))
-        transformation = formula_data.get("transformation")
-        if transformation not in ALLOWED_FORMULA_TRANSFORMATIONS:
-            errors.append(ValidationError(code="FORMULA_FIELD_INVALID_VALUE", message="Quantitative transformation is invalid.", path=f"{formula_name}.transformation", details={"allowed_values": sorted(ALLOWED_FORMULA_TRANSFORMATIONS), "actual_value": transformation}))
         snr = formula_data.get("snr")
         if not (isinstance(snr, (int, float)) or is_nan(snr)):
             errors.append(ValidationError(code="FORMULA_FIELD_TYPE_INVALID", message="Quantitative SNR must be numeric or NaN.", path=f"{formula_name}.snr", details={"expected_type": "number", "actual_type": type(snr).__name__}))

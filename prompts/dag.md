@@ -6,20 +6,20 @@ The DAG should adhere to the following schema:
 {
   "nodes": {
     "name_of_variable_1": {
-      "type": "str, Stochastic or Deterministic",
+      "type": "str, Stochastic or Deterministic"
     },
     "name_of_variable_2": {
-      "type": "str, Stochastic or Deterministic",
+      "type": "str, Stochastic or Deterministic"
     }
   },
   "edges": {
     "edge_1": {
       "parent": "str, name of parent",
-      "child": "str, name of child",
+      "child": "str, name of child"
     }, 
     "edge_2": {
       "parent": "str, name of parent",
-      "child": "str, name of child",
+      "child": "str, name of child"
     }
   }
 }

@@ -18,15 +18,73 @@ def _as_1d_array(values) -> np.ndarray:
     return np.asarray(values).reshape(-1)
 
 
+def _apply_single_transformation(values: np.ndarray, transformation: str) -> np.ndarray:
+    if transformation == "none":
+        return values
+    if transformation == "exp":
+        return np.exp(values)
+    if transformation == "log":
+        if np.any(values <= 0):
+            raise ValueError("log transformation requires positive values")
+        return np.log(values)
+    if transformation == "sqrt":
+        if np.any(values < 0):
+            raise ValueError("sqrt transformation requires non-negative values")
+        return np.sqrt(values)
+    if transformation == "inverse":
+        if np.any(values == 0):
+            raise ValueError("inverse transformation requires non-zero values")
+        return 1.0 / values
+    if transformation == "square":
+        return values**2
+    if transformation == "cubic":
+        return values**3
+    if transformation == "quartic":
+        return values**4
+    if transformation == "sin":
+        return np.sin(values)
+    if transformation == "cos":
+        return np.cos(values)
+    raise ValueError(f"Unsupported transformation: {transformation}")
+
+
+def _transform_predictors(
+    X: np.ndarray,
+    predictor_names: list[str],
+    predictor_transformations: dict[str, str] | None = None,
+) -> tuple[np.ndarray, list[str]]:
+    if predictor_transformations is None:
+        return X, predictor_names
+    if X.ndim != 2:
+        raise ValueError("X must be a 2D regression matrix")
+    if len(predictor_names) != X.shape[1]:
+        raise ValueError("predictor_names must have one name per column in X")
+
+    transformed_columns = []
+    transformed_names = []
+    for idx, name in enumerate(predictor_names):
+        current = X[:, idx]
+        if name in predictor_transformations:
+            transformation = predictor_transformations[name]
+            current = _apply_single_transformation(current, transformation)
+        else:
+            pass
+        transformed_columns.append(np.asarray(current, dtype=float))
+        transformed_names.append(name)
+    return np.column_stack(transformed_columns), transformed_names
+
+
 @dataclass(frozen=True)
 class NormalRegressor:
     target_mean: float
     target_variance: float
+    target_snr: float
     min: float
     max: float
     X: np.ndarray
     beta_1_init: np.ndarray
-    target_snr: float
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
     c: float | None = None
     sigma2: float | None = None
@@ -43,8 +101,11 @@ class NormalRegressor:
             raise ValueError("target_variance must be positive")
         if self.target_snr < 0:
             raise ValueError("target_snr must be non-negative")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
         return beta_0 + self.X @ (c * self.beta_1_init)
