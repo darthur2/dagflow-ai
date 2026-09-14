@@ -51,3 +51,46 @@ def test_normal_regressor_calibrates_and_samples():
     print(f"mean: target={regressor.target_mean} sample={sample_mean}")
     print(f"variance: target={regressor.target_variance} sample={sample_variance}")
     print(f"snr: target={regressor.target_snr} sample={estimated_snr}")
+
+
+def test_normal_regressor_calibrates_latent_uniform_wrapper_scenario():
+    np.random.seed(0)
+
+    average_handle_time_minutes = Normal(mean=9.5, standard_deviation=2.5, min=0.0, max=30.0).sample(100)
+    queue_length = LogNormal(log_mean=2.1, log_standard_deviation=0.45, min=0.0, max=40.0).sample(100)
+    staff_utilization_rate = Normal(mean=0.68, standard_deviation=0.12, min=0.0, max=1.0).sample(100)
+    shift_type = CategoricalNominal(categories=["day", "evening", "night"], probabilities=[0.5, 0.3, 0.2]).sample(100)
+
+    evening = (shift_type == "evening").astype(float)
+    night = (shift_type == "night").astype(float)
+    X = np.column_stack([average_handle_time_minutes, queue_length, staff_utilization_rate, evening, night])
+
+    regressor = NormalRegressor(
+        target_mean=0.0,
+        target_variance=1.0,
+        target_snr=0.55,
+        min=-10.0,
+        max=10.0,
+        X=X,
+        beta_1_init=np.array([0.42, 0.24, -1.05, 0.2, 0.45], dtype=float),
+        predictor_names=[
+            "average_handle_time_minutes",
+            "queue_length",
+            "staff_utilization_rate",
+            "shift_type",
+            "shift_type",
+        ],
+        predictor_transformations={"average_handle_time_minutes": "log", "queue_length": "sqrt"},
+    )
+
+    calibrated = regressor.calibrate()
+    samples = calibrated.sample(2000)
+    cond_mean, cond_var = calibrated._conditional_moments(calibrated.beta_0, calibrated.c, calibrated.sigma2)
+    estimated_snr = float(cond_mean.var() / cond_var.mean())
+
+    print(f"beta_0: {calibrated.beta_0}")
+    print(f"c: {calibrated.c}")
+    print(f"sigma2: {calibrated.sigma2}")
+    print(f"mean: target={regressor.target_mean} sample={float(np.mean(samples))}")
+    print(f"variance: target={regressor.target_variance} sample={float(np.var(samples))}")
+    print(f"snr: target={regressor.target_snr} sample={estimated_snr}")

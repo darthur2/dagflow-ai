@@ -691,7 +691,7 @@ class UniformRegressor:
     predictor_transformations: dict[str, str] | None = None
     min: float = -10.0
     max: float = 10.0
-    _latent: NormalRegressor | None = None
+    latent_regressor: NormalRegressor | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
@@ -710,25 +710,25 @@ class UniformRegressor:
         object.__setattr__(self, "predictor_names", predictor_names)
 
     def calibrate(self) -> "UniformRegressor":
-        if self._latent is not None:
+        if self.latent_regressor is not None:
             return self
 
-        latent = NormalRegressor(
+        latent_regressor = NormalRegressor(
             target_mean=0.0,
             target_variance=1.0,
-            min=self.min,
-            max=self.max,
+            min=-10.0,
+            max=10.0,
             X=self.X,
             beta_1_init=self.beta_1_init,
             target_snr=self.target_snr,
         ).calibrate()
-        return replace(self, _latent=latent)
+        return replace(self, latent_regressor=latent_regressor)
 
     def sample(self, n: int) -> np.ndarray:
-        if self._latent is None:
+        if self.latent_regressor is None:
             raise ValueError("UniformRegressor must be calibrated before sampling")
 
-        latent_samples = self._latent.sample(n)
+        latent_samples = self.latent_regressor.sample(n)
         uniforms = stats.norm.cdf(latent_samples)
         return _as_1d_array(self.min + (self.max - self.min) * uniforms)
 
@@ -742,9 +742,7 @@ class DiscreteUniformRegressor:
     predictor_transformations: dict[str, str] | None = None
     min: int = 0
     max: int = 10
-    _latent: UniformRegressor | None = None
-    _latent_min: float | None = None
-    _latent_max: float | None = None
+    latent_regressor: NormalRegressor | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
@@ -763,25 +761,25 @@ class DiscreteUniformRegressor:
         object.__setattr__(self, "predictor_names", predictor_names)
 
     def calibrate(self) -> "DiscreteUniformRegressor":
-        if self._latent is not None:
+        if self.latent_regressor is not None:
             return self
 
-        latent_min = self.min - 0.5
-        latent_max = self.max + 0.5
-        latent = UniformRegressor(
-            target_snr=self.target_snr,
-            min=latent_min,
-            max=latent_max,
+        latent_regressor = NormalRegressor(
+            target_mean=0.0,
+            target_variance=1.0,
+            min=-10.0,
+            max=10.0,
             X=self.X,
             beta_1_init=self.beta_1_init,
+            target_snr=self.target_snr,
         ).calibrate()
-        return replace(self, _latent=latent, _latent_min=latent_min, _latent_max=latent_max)
+        return replace(self, latent_regressor=latent_regressor)
 
     def sample(self, n: int) -> np.ndarray:
-        if self._latent is None or self._latent_min is None or self._latent_max is None:
+        if self.latent_regressor is None:
             raise ValueError("DiscreteUniformRegressor must be calibrated before sampling")
 
-        samples = self._latent.sample(n)
+        samples = self.latent_regressor.sample(n)
         rounded = np.rint(samples).astype(int)
         return _as_1d_array(np.clip(rounded, self.min, self.max))
 
