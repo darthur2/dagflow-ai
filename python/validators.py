@@ -687,7 +687,9 @@ def validate_distributions(distributions: dict[str, Any], variables: dict[str, d
             )
             continue
 
-        if variable_schema_type == "quantitative":
+        if is_deterministic and distribution == "None":
+            allowed_distributions = {"None"}
+        elif variable_schema_type == "quantitative":
             classification = variable_data.get("classification")
             allowed_distributions = ALLOWED_DISTRIBUTIONS_BY_VARIABLE_SCHEMA["quantitative"].get(classification, set())
         else:
