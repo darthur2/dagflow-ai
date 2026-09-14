@@ -271,6 +271,13 @@ class ExponentialRegressor:
 
         lower = initial_beta_0 - 50.0
         upper = initial_beta_0 + 50.0
+        lower_residual = residual(lower)
+        upper_residual = residual(upper)
+        while lower_residual * upper_residual > 0:
+            lower -= 50.0
+            upper += 50.0
+            lower_residual = residual(lower)
+            upper_residual = residual(upper)
         result = optimize.root_scalar(residual, bracket=(lower, upper), method="brentq")
 
         if not result.converged:
@@ -866,7 +873,6 @@ class BernoulliRegressor:
 @dataclass(frozen=True)
 class BinomialRegressor:
     target_mean: float
-    target_snr: float
     n_trials: int
     X: np.ndarray
     beta_1_init: np.ndarray
@@ -875,7 +881,6 @@ class BinomialRegressor:
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
-    c: float | None = None
     _support: np.ndarray | None = None
 
     def __post_init__(self) -> None:
@@ -890,8 +895,6 @@ class BinomialRegressor:
             raise ValueError("n_trials must be >= 1")
         if self.min < 0 or self.max > self.n_trials:
             raise ValueError("min and max must lie within [0, n_trials]")
-        if self.target_snr <= 0:
-            raise ValueError("target_snr must be positive")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
@@ -899,80 +902,75 @@ class BinomialRegressor:
         object.__setattr__(self, "predictor_names", predictor_names)
         object.__setattr__(self, "_support", np.arange(self.min, self.max + 1, dtype=float))
 
-    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
-        return beta_0 + self.X @ (c * self.beta_1_init)
+    def _linear_predictor(self, beta_0: float) -> np.ndarray:
+        return beta_0 + self.X @ self.beta_1_init
 
-    def _probability(self, beta_0: float, c: float) -> np.ndarray:
-        eta = self._linear_predictor(beta_0, c)
+    def _probability(self, beta_0: float) -> np.ndarray:
+        eta = self._linear_predictor(beta_0)
         return 1.0 / (1.0 + np.exp(-eta))
 
-    def target_mean_value(self, beta_0: float, c: float) -> float:
-        p = self._probability(beta_0, c)
-        means = np.empty(len(p), dtype=float)
-        for idx, current_p in enumerate(p):
-            means[idx] = Binomial(self.n_trials, float(current_p), self.min, self.max).target_mean()
-        return float(means.mean())
+    def _row_moments(self, beta_0: float) -> tuple[np.ndarray, np.ndarray]:
+        p = self._probability(beta_0)
+        support = self._support[None, :]
+        p_matrix = p[:, None]
+        pmf = stats.binom.pmf(support, self.n_trials, p_matrix)
+        pmf_sum = np.sum(pmf, axis=1, keepdims=True)
+        lower = stats.binom.cdf(self.min - 1, self.n_trials, p)
+        upper = stats.binom.cdf(self.max, self.n_trials, p)
+        if np.any(lower >= upper) or np.any(pmf_sum <= 0):
+            raise ValueError("truncation interval has zero probability mass")
 
-    def target_snr_value(self, beta_0: float, c: float) -> float:
-        p = self._probability(beta_0, c)
-        cond_mean = np.empty(len(p), dtype=float)
-        cond_var = np.empty(len(p), dtype=float)
-        for idx, current_p in enumerate(p):
-            dist = stats.binom(self.n_trials, float(current_p))
-            lower = dist.cdf(self.min - 1)
-            upper = dist.cdf(self.max)
-            if lower >= upper:
-                raise ValueError("truncation interval has zero probability mass")
-            pmf = dist.pmf(self._support)
-            pmf = pmf / float(np.sum(pmf))
-            current_mean = float(np.sum(self._support * pmf))
-            current_second = float(np.sum((self._support**2) * pmf))
-            cond_mean[idx] = current_mean
-            cond_var[idx] = current_second - current_mean**2
-        within = float(cond_var.mean())
-        if within <= 0:
-            raise ValueError("Conditional variance is non-positive")
-        return float(cond_mean.var() / within)
+        pmf = pmf / pmf_sum
+        cond_mean = np.sum(support * pmf, axis=1)
+        cond_second = np.sum((support**2) * pmf, axis=1)
+        cond_var = cond_second - cond_mean**2
+        return cond_mean, cond_var
 
-    def _feasible_initial_guess(self) -> tuple[float, float]:
+    def target_mean_value(self, beta_0: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0)
+        return float(cond_mean.mean())
+
+    def _feasible_initial_guess(self) -> float:
         mean_prob = np.clip(self.target_mean / self.n_trials, 1e-3, 1.0 - 1e-3)
         x_mean = np.mean(self.X @ self.beta_1_init)
-        beta_0 = np.log(mean_prob / (1.0 - mean_prob)) - x_mean
-        c = 1.0
-        return beta_0, c
+        return float(np.log(mean_prob / (1.0 - mean_prob)) - x_mean)
 
     def calibrate(self) -> "BinomialRegressor":
-        if self.beta_0 is not None and self.c is not None:
+        if self.beta_0 is not None:
             return self
 
-        initial_beta_0, initial_c = self._feasible_initial_guess()
+        initial_beta_0 = self._feasible_initial_guess()
 
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, c = params
+        def residual(beta_0: float) -> float:
             try:
-                mean_residual = self.target_mean_value(beta_0, c) - self.target_mean
-                snr_residual = self.target_snr_value(beta_0, c) - self.target_snr
-                return np.array([mean_residual, snr_residual], dtype=float)
+                return self.target_mean_value(beta_0) - self.target_mean
             except ValueError:
-                return np.array([1e6, 1e6], dtype=float)
+                return 1e6
 
-        result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0, initial_c], dtype=float),
-            bounds=([-np.inf, 0.0], [np.inf, np.inf]),
+        lower = initial_beta_0 - 4.0
+        upper = initial_beta_0 + 4.0
+        result = optimize.root_scalar(residual, bracket=(lower, upper), method="brentq")
+
+        if not result.converged:
+            raise ValueError("Unable to calibrate BinomialRegressor")
+
+        return BinomialRegressor(
+            target_mean=self.target_mean,
+            n_trials=self.n_trials,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            min=self.min,
+            max=self.max,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=float(result.root),
         )
 
-        if not result.success:
-            raise ValueError(f"Unable to calibrate BinomialRegressor: {result.message}")
-
-        beta_0, c = result.x
-        return replace(self, beta_0=float(beta_0), c=float(c))
-
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.c is None:
+        if self.beta_0 is None:
             raise ValueError("BinomialRegressor must be calibrated before sampling")
 
-        p = np.repeat(self._probability(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        p = np.repeat(self._probability(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
         samples = np.empty(n, dtype=float)
         rng = np.random.default_rng()
         for idx, current_p in enumerate(p):
