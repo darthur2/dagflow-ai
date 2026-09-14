@@ -29,6 +29,7 @@ def test_categorical_ordinal_regressor_calibrates_and_samples():
     regressor = CategoricalOrdinalRegressor(
         target_probabilities=target_probabilities,
         X=X,
+        categories=["low", "medium", "high", "critical"],
         beta_1=np.array([0.45, 0.12, 0.22, -0.18, -0.08, 0.28], dtype=float),
         predictor_names=[
             "mean_time_to_recovery_hours",
@@ -44,8 +45,9 @@ def test_categorical_ordinal_regressor_calibrates_and_samples():
     calibrated = regressor.calibrate()
     samples = calibrated.sample(2000)
 
-    sample_probabilities = np.bincount(samples.astype(int), minlength=4) / float(len(samples))
+    sample_probabilities = {category: float(np.mean(samples == category)) for category in calibrated.categories}
     target_probabilities = regressor.target_probabilities
+    target_probabilities = {category: float(probability) for category, probability in zip(calibrated.categories, target_probabilities)}
 
     print(f"beta_0: {calibrated.beta_0}")
     print(f"target_probabilities: {target_probabilities}")

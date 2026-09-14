@@ -29,6 +29,7 @@ def test_categorical_nominal_regressor_calibrates_and_samples():
     regressor = CategoricalNominalRegressor(
         target_probabilities=target_probabilities,
         X=X,
+        categories=["private", "medicare", "medicaid", "uninsured"],
         beta_1=np.array(
             [
                 [0.012, 0.018, 0.028],
@@ -54,8 +55,9 @@ def test_categorical_nominal_regressor_calibrates_and_samples():
     calibrated = regressor.calibrate()
     samples = calibrated.sample(2000)
 
-    sample_probabilities = np.bincount(samples.astype(int), minlength=4) / float(len(samples))
+    sample_probabilities = {category: float(np.mean(samples == category)) for category in calibrated.categories}
     target_probabilities = regressor.target_probabilities
+    target_probabilities = {category: float(probability) for category, probability in zip(calibrated.categories, target_probabilities)}
 
     print(f"beta_0: {calibrated.beta_0}")
     print(f"target_probabilities: {target_probabilities}")

@@ -1329,6 +1329,7 @@ class CategoricalNominalRegressor:
     beta_1: np.ndarray
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
+    categories: list[str] | None = None
     beta_0: np.ndarray | None = None
 
     def __post_init__(self) -> None:
@@ -1351,12 +1352,16 @@ class CategoricalNominalRegressor:
             raise ValueError("beta_1 must have one row per column in X")
         if beta_1.shape[1] != probabilities.size - 1:
             raise ValueError("beta_1 must have K-1 columns for K response categories")
+        categories = self.categories or [str(i) for i in range(probabilities.size)]
+        if len(categories) != probabilities.size:
+            raise ValueError("categories must have one label per response category")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "target_probabilities", probabilities)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1", beta_1)
         object.__setattr__(self, "predictor_names", predictor_names)
+        object.__setattr__(self, "categories", categories)
 
     def _linear_predictor(self, beta_0: np.ndarray) -> np.ndarray:
         return beta_0 + self.X @ self.beta_1
@@ -1401,6 +1406,7 @@ class CategoricalNominalRegressor:
             beta_1=self.beta_1,
             predictor_names=self.predictor_names,
             predictor_transformations=None,
+            categories=self.categories,
             beta_0=np.asarray(result.x, dtype=float),
         )
 
@@ -1415,7 +1421,7 @@ class CategoricalNominalRegressor:
         samples = np.empty(n, dtype=int)
         for idx, probs in enumerate(row_probs):
             samples[idx] = rng.choice(categories, p=probs)
-        return _as_1d_array(samples)
+        return _as_1d_array([self.categories[idx] for idx in samples])
 
 
 @dataclass(frozen=True)
@@ -1425,6 +1431,7 @@ class CategoricalOrdinalRegressor:
     beta_1: np.ndarray
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
+    categories: list[str] | None = None
     beta_0: np.ndarray | None = None
 
     def __post_init__(self) -> None:
@@ -1443,12 +1450,16 @@ class CategoricalOrdinalRegressor:
             raise ValueError("X must be a 2D regression matrix")
         if X.shape[1] != beta_1.shape[0]:
             raise ValueError("beta_1 must have one coefficient per column in X")
+        categories = self.categories or [str(i) for i in range(probabilities.size)]
+        if len(categories) != probabilities.size:
+            raise ValueError("categories must have one label per response category")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "target_probabilities", probabilities)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1", beta_1)
         object.__setattr__(self, "predictor_names", predictor_names)
+        object.__setattr__(self, "categories", categories)
 
     def _linear_predictor(self) -> np.ndarray:
         return self.X @ self.beta_1
@@ -1514,6 +1525,7 @@ class CategoricalOrdinalRegressor:
             beta_1=self.beta_1,
             predictor_names=self.predictor_names,
             predictor_transformations=None,
+            categories=self.categories,
             beta_0=np.asarray(np.maximum.accumulate(result.x), dtype=float),
         )
 
@@ -1528,4 +1540,95 @@ class CategoricalOrdinalRegressor:
         samples = np.empty(n, dtype=int)
         for idx, probs in enumerate(row_probs):
             samples[idx] = rng.choice(categories, p=probs)
-        return _as_1d_array(samples)
+        return _as_1d_array([self.categories[idx] for idx in samples])
+
+
+@dataclass(frozen=True)
+class NoneRegressor:
+    X: np.ndarray
+    beta_0: object
+    beta_1: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
+    response_type: str = "quantitative"
+    categories: list[str] | None = None
+
+    def __post_init__(self) -> None:
+        X = np.asarray(self.X, dtype=float)
+        beta_1 = np.asarray(self.beta_1, dtype=float)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if beta_1.ndim == 1:
+            beta_1 = beta_1.reshape(-1, 1)
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one row per column in X")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        if self.response_type in {"categorical_nominal", "categorical_ordinal"}:
+            categories = self.categories
+            if categories is None:
+                raise ValueError("categories are required for categorical response types")
+            categories = list(categories)
+        else:
+            categories = self.categories
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1", beta_1)
+        object.__setattr__(self, "predictor_names", predictor_names)
+        object.__setattr__(self, "categories", categories)
+
+    def _linear_predictor(self) -> np.ndarray:
+        beta_0 = np.asarray(self.beta_0)
+        if beta_0.ndim == 0:
+            return beta_0 + self.X @ self.beta_1
+        return beta_0 + self.X @ self.beta_1
+
+    def _sample_quantitative(self, eta: np.ndarray, n: int) -> np.ndarray:
+        values = np.repeat(np.asarray(eta).reshape(-1), int(np.ceil(n / len(np.asarray(eta).reshape(-1)))))[:n]
+        return _as_1d_array(values)
+
+    def _sample_categorical_nominal(self, eta: np.ndarray, n: int) -> np.ndarray:
+        scores = np.asarray(eta, dtype=float)
+        if scores.ndim == 1:
+            scores = scores.reshape(-1, 1)
+        scores = np.column_stack([scores, np.zeros(len(scores), dtype=float)])
+        scores = scores - np.max(scores, axis=1, keepdims=True)
+        probs = np.exp(scores)
+        probs = probs / probs.sum(axis=1, keepdims=True)
+
+        row_probs = np.repeat(probs, int(np.ceil(n / len(probs))), axis=0)[:n]
+        rng = np.random.default_rng()
+        categories = np.arange(probs.shape[1])
+        samples = np.empty(n, dtype=int)
+        for idx, p in enumerate(row_probs):
+            samples[idx] = rng.choice(categories, p=p)
+        return _as_1d_array([self.categories[idx] for idx in samples])
+
+    def _sample_categorical_ordinal(self, eta: np.ndarray, n: int) -> np.ndarray:
+        thresholds = np.asarray(self.beta_0, dtype=float).reshape(-1)
+        scores = np.asarray(eta, dtype=float).reshape(-1)
+        if thresholds.size < 1:
+            raise ValueError("ordinal response requires at least one threshold")
+        cumulative = 1.0 / (1.0 + np.exp(-(thresholds[None, :] - scores[:, None])))
+        probs = np.empty((len(scores), thresholds.size + 1), dtype=float)
+        probs[:, 0] = cumulative[:, 0]
+        for idx in range(1, thresholds.size):
+            probs[:, idx] = cumulative[:, idx] - cumulative[:, idx - 1]
+        probs[:, -1] = 1.0 - cumulative[:, -1]
+
+        row_probs = np.repeat(probs, int(np.ceil(n / len(probs))), axis=0)[:n]
+        rng = np.random.default_rng()
+        categories = np.arange(probs.shape[1])
+        samples = np.empty(n, dtype=int)
+        for idx, p in enumerate(row_probs):
+            samples[idx] = rng.choice(categories, p=p)
+        return _as_1d_array([self.categories[idx] for idx in samples])
+
+    def sample(self, n: int) -> np.ndarray:
+        eta = self._linear_predictor()
+        if self.response_type == "quantitative":
+            return self._sample_quantitative(eta, n)
+        if self.response_type == "categorical_nominal":
+            return self._sample_categorical_nominal(eta, n)
+        if self.response_type == "categorical_ordinal":
+            return self._sample_categorical_ordinal(eta, n)
+        raise ValueError(f"Unsupported response_type: {self.response_type}")
