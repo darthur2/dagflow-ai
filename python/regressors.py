@@ -1,7 +1,7 @@
 from dataclasses import dataclass, replace
 
 import numpy as np
-from scipy import optimize, stats
+from scipy import optimize, special, stats
 
 try:
     from distributions import Geometric, NegativeBinomial, Normal, Poisson, Binomial
@@ -192,12 +192,17 @@ class NormalRegressor:
 class ExponentialRegressor:
     target_mean: float
     target_snr: float
+    min: float
+    max: float
     X: np.ndarray
     beta_1_init: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
     c: float | None = None
 
     def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
         X = np.asarray(self.X, dtype=float)
         beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
         if X.ndim != 2:
@@ -208,8 +213,11 @@ class ExponentialRegressor:
             raise ValueError("target_mean must be positive")
         if not 0.0 < self.target_snr < 1.0:
             raise ValueError("target_snr must be in (0, 1)")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
         return beta_0 + self.X @ (c * self.beta_1_init)
@@ -300,14 +308,17 @@ class ExponentialRegressor:
 class GammaRegressor:
     target_mean: float
     target_variance: float
-    target_snr: float
+    min: float
+    max: float
     X: np.ndarray
     beta_1_init: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
-    c: float | None = None
     shape: float | None = None
 
     def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
         X = np.asarray(self.X, dtype=float)
         beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
         if X.ndim != 2:
@@ -318,76 +329,107 @@ class GammaRegressor:
             raise ValueError("target_mean must be positive")
         if self.target_variance <= 0:
             raise ValueError("target_variance must be positive")
-        if self.target_snr <= 0:
-            raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
-        return beta_0 + self.X @ (c * self.beta_1_init)
+    def _linear_predictor(self, beta_0: float) -> np.ndarray:
+        return beta_0 + self.X @ self.beta_1_init
 
-    def _row_moments(self, beta_0: float, c: float, shape: float) -> tuple[np.ndarray, np.ndarray]:
-        eta = self._linear_predictor(beta_0, c)
+    def _row_moments(self, beta_0: float, shape: float) -> tuple[np.ndarray, np.ndarray]:
+        eta = self._linear_predictor(beta_0)
         rate = np.exp(-eta)
-        mean = shape / rate
-        var = shape / (rate**2)
-        return mean, var
+        a = shape
+        lower_scaled = rate * self.min
+        upper_scaled = rate * self.max
+        denom = special.gammainc(a, upper_scaled) - special.gammainc(a, lower_scaled)
+        if np.any(denom <= 0):
+            raise ValueError("truncation interval has zero probability mass")
 
-    def target_mean_value(self, beta_0: float, c: float, shape: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, c, shape)
+        mean = (special.gamma(a + 1.0) / (rate * special.gamma(a))) * (
+            (special.gammainc(a + 1.0, upper_scaled) - special.gammainc(a + 1.0, lower_scaled)) / denom
+        )
+        second_moment = (special.gamma(a + 2.0) / (rate**2 * special.gamma(a))) * (
+            (special.gammainc(a + 2.0, upper_scaled) - special.gammainc(a + 2.0, lower_scaled)) / denom
+        )
+        var = second_moment - mean**2
+        return np.asarray(mean, dtype=float), np.asarray(var, dtype=float)
+
+    def target_mean_value(self, beta_0: float, shape: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0, shape)
         return float(cond_mean.mean())
 
-    def target_variance_value(self, beta_0: float, c: float, shape: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c, shape)
+    def target_variance_value(self, beta_0: float, shape: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, shape)
         return float(cond_mean.var() + cond_var.mean())
 
-    def target_snr_value(self, beta_0: float, c: float, shape: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c, shape)
-        within = float(cond_var.mean())
-        if within <= 0:
-            raise ValueError("Conditional variance is non-positive")
-        return float(cond_mean.var() / within)
-
-    def _feasible_initial_guess(self) -> tuple[float, float, float]:
+    def _feasible_initial_guess(self) -> tuple[float, float]:
         x_mean = np.mean(self.X @ self.beta_1_init)
-        beta_0 = np.log(self.target_mean / self.target_snr) - x_mean
-        c = 1.0
-        shape = max(self.target_snr, 1.0)
-        return beta_0, c, shape
+        beta_0 = np.log(max(self.target_mean, np.finfo(float).tiny)) - x_mean
+        shape = max(self.target_mean**2 / max(self.target_variance, np.finfo(float).tiny), np.finfo(float).tiny)
+        return beta_0, shape
 
-    def calibrate(self) -> "GammaRegressor":
-        if self.beta_0 is not None and self.c is not None and self.shape is not None:
+    def calibrate_mean_variance(self, shape: float) -> "GammaRegressor":
+        if self.beta_0 is not None and self.shape is not None:
             return self
 
-        initial_beta_0, initial_c, initial_shape = self._feasible_initial_guess()
+        initial_beta_0 = float(np.log(max(self.target_mean, np.finfo(float).tiny)) - np.mean(self.X @ self.beta_1_init))
 
         def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, c, shape = params
+            beta_0 = params[0]
             try:
-                mean_residual = self.target_mean_value(beta_0, c, shape) - self.target_mean
-                variance_residual = self.target_variance_value(beta_0, c, shape) - self.target_variance
-                snr_residual = self.target_snr_value(beta_0, c, shape) - self.target_snr
-                return np.array([mean_residual, variance_residual, snr_residual], dtype=float)
+                mean_residual = self.target_mean_value(beta_0, shape) - self.target_mean
+                variance_residual = self.target_variance_value(beta_0, shape) - self.target_variance
+                return np.array([mean_residual, variance_residual], dtype=float)
             except ValueError:
-                return np.array([1e6, 1e6, 1e6], dtype=float)
+                return np.array([1e6, 1e6], dtype=float)
 
         result = optimize.least_squares(
             residuals,
-            x0=np.array([initial_beta_0, initial_c, initial_shape], dtype=float),
-            bounds=([-np.inf, 0.0, np.finfo(float).tiny], [np.inf, np.inf, np.inf]),
+            x0=np.array([initial_beta_0], dtype=float),
+            bounds=([-np.inf], [np.inf]),
         )
 
         if not result.success:
             raise ValueError(f"Unable to calibrate GammaRegressor: {result.message}")
 
-        beta_0, c, shape = result.x
-        return replace(self, beta_0=float(beta_0), c=float(c), shape=float(shape))
+        beta_0 = float(result.x[0])
+        return replace(self, beta_0=beta_0, shape=float(shape))
+
+    def calibrate(self) -> "GammaRegressor":
+        if self.beta_0 is not None and self.shape is not None:
+            return self
+
+        initial_beta_0, initial_shape = self._feasible_initial_guess()
+
+        def residuals(params: np.ndarray) -> np.ndarray:
+            beta_0, shape = params
+            try:
+                mean_residual = self.target_mean_value(beta_0, shape) - self.target_mean
+                variance_residual = self.target_variance_value(beta_0, shape) - self.target_variance
+                return np.array([mean_residual, variance_residual], dtype=float)
+            except ValueError:
+                return np.array([1e6, 1e6], dtype=float)
+
+        result = optimize.least_squares(
+            residuals,
+            x0=np.array([initial_beta_0, initial_shape], dtype=float),
+            bounds=([-np.inf, np.finfo(float).tiny], [np.inf, np.inf]),
+        )
+
+        if not result.success:
+            raise ValueError(f"Unable to calibrate GammaRegressor: {result.message}")
+
+        beta_0, shape = result.x
+        return replace(self, beta_0=float(beta_0), shape=float(shape))
 
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.c is None or self.shape is None:
+        if self.beta_0 is None or self.shape is None:
             raise ValueError("GammaRegressor must be calibrated before sampling")
 
-        eta = self._linear_predictor(self.beta_0, self.c)
+        eta = self._linear_predictor(self.beta_0)
         rate = np.exp(-np.repeat(eta, int(np.ceil(n / len(eta))))[:n])
         samples = stats.gamma.rvs(a=self.shape, scale=1.0 / rate, size=n)
         return _as_1d_array(samples)
@@ -398,13 +440,18 @@ class LogNormalRegressor:
     target_mean: float
     target_variance: float
     target_snr: float
+    min: float
+    max: float
     X: np.ndarray
     beta_1_init: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
     c: float | None = None
     sigma2: float | None = None
 
     def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
         X = np.asarray(self.X, dtype=float)
         beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
         if X.ndim != 2:
@@ -417,8 +464,11 @@ class LogNormalRegressor:
             raise ValueError("target_variance must be positive")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
         return beta_0 + self.X @ (c * self.beta_1_init)
@@ -496,13 +546,18 @@ class BetaRegressor:
     target_mean: float
     target_variance: float
     target_snr: float
+    min: float
+    max: float
     X: np.ndarray
     beta_1_init: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
     c: float | None = None
     phi: float | None = None
 
     def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
         X = np.asarray(self.X, dtype=float)
         beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
         if X.ndim != 2:
@@ -515,8 +570,11 @@ class BetaRegressor:
             raise ValueError("target_variance must be positive")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
         return beta_0 + self.X @ (c * self.beta_1_init)
@@ -598,6 +656,8 @@ class UniformRegressor:
     target_snr: float
     X: np.ndarray
     beta_1_init: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     min: float = -10.0
     max: float = 10.0
     _latent: NormalRegressor | None = None
@@ -612,8 +672,11 @@ class UniformRegressor:
             raise ValueError("beta_1_init must have one coefficient per column in X")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def calibrate(self) -> "UniformRegressor":
         if self._latent is not None:
@@ -622,8 +685,8 @@ class UniformRegressor:
         latent = NormalRegressor(
             target_mean=0.0,
             target_variance=1.0,
-            min=-10.0,
-            max=10.0,
+            min=self.min,
+            max=self.max,
             X=self.X,
             beta_1_init=self.beta_1_init,
             target_snr=self.target_snr,
@@ -644,6 +707,8 @@ class DiscreteUniformRegressor:
     target_snr: float
     X: np.ndarray
     beta_1_init: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     min: int = 0
     max: int = 10
     _latent: UniformRegressor | None = None
@@ -660,8 +725,11 @@ class DiscreteUniformRegressor:
             raise ValueError("beta_1_init must have one coefficient per column in X")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def calibrate(self) -> "DiscreteUniformRegressor":
         if self._latent is not None:
@@ -671,10 +739,10 @@ class DiscreteUniformRegressor:
         latent_max = self.max + 0.5
         latent = UniformRegressor(
             target_snr=self.target_snr,
-            X=self.X,
-            beta_1_init=self.beta_1_init,
             min=latent_min,
             max=latent_max,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
         ).calibrate()
         return replace(self, _latent=latent, _latent_min=latent_min, _latent_max=latent_max)
 
@@ -693,6 +761,10 @@ class BernoulliRegressor:
     target_snr: float
     X: np.ndarray
     beta_1_init: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
+    min: float = 0.0
+    max: float = 1.0
     beta_0: float | None = None
     c: float | None = None
 
@@ -707,8 +779,11 @@ class BernoulliRegressor:
             raise ValueError("target_mean must be in (0, 1)")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
         return beta_0 + self.X @ (c * self.beta_1_init)
@@ -771,13 +846,15 @@ class BernoulliRegressor:
 
 @dataclass(frozen=True)
 class BinomialRegressor:
-    n_trials: int
     target_mean: float
     target_snr: float
+    n_trials: int
     X: np.ndarray
     beta_1_init: np.ndarray
     min: int
     max: int
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
     c: float | None = None
     _support: np.ndarray | None = None
@@ -796,8 +873,11 @@ class BinomialRegressor:
             raise ValueError("min and max must lie within [0, n_trials]")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
         object.__setattr__(self, "_support", np.arange(self.min, self.max + 1, dtype=float))
 
     def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
@@ -893,6 +973,8 @@ class PoissonRegressor:
     beta_1_init: np.ndarray
     min: int
     max: int
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
     c: float | None = None
     _support: np.ndarray | None = None
@@ -909,8 +991,11 @@ class PoissonRegressor:
             raise ValueError("min must be >= 0")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
         object.__setattr__(self, "_support", np.arange(self.min, self.max + 1, dtype=float))
 
     def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
@@ -1001,6 +1086,8 @@ class GeometricRegressor:
     target_snr: float
     X: np.ndarray
     beta_1_init: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     min: int = 0
     max: int = 20
     beta_0: float | None = None
@@ -1020,8 +1107,11 @@ class GeometricRegressor:
             raise ValueError("target_mean must be positive")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
         return beta_0 + self.X @ (c * self.beta_1_init)
@@ -1114,10 +1204,12 @@ class NegativeBinomialRegressor:
     target_mean: float
     target_variance: float
     target_snr: float
+    min: int
+    max: int
     X: np.ndarray
     beta_1_init: np.ndarray
-    min: int = 0
-    max: int = 20
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     shape: float | None = None
     beta_0: float | None = None
     c: float | None = None
@@ -1136,8 +1228,11 @@ class NegativeBinomialRegressor:
             raise ValueError("target_variance must be positive")
         if self.target_snr <= 0:
             raise ValueError("target_snr must be positive")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
         return beta_0 + self.X @ (c * self.beta_1_init)
@@ -1239,6 +1334,8 @@ class CategoricalNominalRegressor:
     target_probabilities: np.ndarray
     X: np.ndarray
     beta_1: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     beta_0: np.ndarray | None = None
 
     def __post_init__(self) -> None:
@@ -1261,9 +1358,12 @@ class CategoricalNominalRegressor:
             raise ValueError("beta_1 must have one row per column in X")
         if beta_1.shape[1] != probabilities.size - 1:
             raise ValueError("beta_1 must have K-1 columns for K response categories")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "target_probabilities", probabilities)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1", beta_1)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def _linear_predictor(self, beta_0: np.ndarray) -> np.ndarray:
         return beta_0 + self.X @ self.beta_1
@@ -1323,6 +1423,8 @@ class CategoricalOrdinalRegressor:
     target_probabilities: np.ndarray
     X: np.ndarray
     beta_1: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
     beta_0: np.ndarray | None = None
 
     def __post_init__(self) -> None:
@@ -1341,9 +1443,12 @@ class CategoricalOrdinalRegressor:
             raise ValueError("X must be a 2D regression matrix")
         if X.shape[1] != beta_1.shape[0]:
             raise ValueError("beta_1 must have one coefficient per column in X")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "target_probabilities", probabilities)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1", beta_1)
+        object.__setattr__(self, "predictor_names", predictor_names)
 
     def _linear_predictor(self) -> np.ndarray:
         return self.X @ self.beta_1

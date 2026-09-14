@@ -306,10 +306,22 @@ def is_nan(value: Any) -> bool:
 
 
 def classify_variable_schema(variable_name: str, variable_data: dict[str, Any]) -> tuple[str | None, ValidationError | None]:
+    measurement_level = variable_data.get("measurement_level")
     has_classification = "classification" in variable_data
     has_skew = "skew" in variable_data
 
-    if has_classification or has_skew:
+    if measurement_level in ALLOWED_CATEGORICAL_MEASUREMENT_LEVELS:
+        unexpected_fields = sorted(set(variable_data.keys()) & {"classification", "skew"})
+        if unexpected_fields:
+            return None, ValidationError(
+                code="VARIABLE_SCHEMA_MISMATCH",
+                message="Categorical variables must not include quantitative-only fields.",
+                path=variable_name,
+                details={"unexpected_fields": unexpected_fields},
+            )
+        return "categorical", None
+
+    if measurement_level in ALLOWED_QUANTITATIVE_MEASUREMENT_LEVELS:
         if not has_classification or not has_skew:
             return None, ValidationError(
                 code="VARIABLE_SCHEMA_MISMATCH",
@@ -319,7 +331,12 @@ def classify_variable_schema(variable_name: str, variable_data: dict[str, Any]) 
             )
         return "quantitative", None
 
-    return "categorical", None
+    return None, ValidationError(
+        code="VARIABLE_SCHEMA_MISMATCH",
+        message="measurement_level must identify the variable schema.",
+        path=variable_name,
+        details={"actual_value": measurement_level},
+    )
 
 
 def validate_quantitative_variable_schema_fields(variable_name: str, variable_data: dict[str, Any]) -> ValidationError | None:
@@ -422,6 +439,22 @@ def validate_variable_field_values(variable_name: str, variable_data: dict[str, 
                 message="skew must be one of the allowed values.",
                 path=f"{variable_name}.skew",
                 details={"allowed_values": sorted(ALLOWED_SKEWS), "actual_value": skew},
+            )
+
+    return None
+
+
+def validate_variable_schema_consistency(variable_name: str, variable_data: dict[str, Any]) -> ValidationError | None:
+    measurement_level = variable_data.get("measurement_level")
+
+    if measurement_level in ALLOWED_CATEGORICAL_MEASUREMENT_LEVELS:
+        unexpected_fields = sorted(set(variable_data.keys()) & {"classification", "skew"})
+        if unexpected_fields:
+            return ValidationError(
+                code="VARIABLE_SCHEMA_UNKNOWN_FIELD",
+                message="Categorical variables must not include quantitative-only fields.",
+                path=variable_name,
+                details={"unexpected_fields": unexpected_fields},
             )
 
     return None
@@ -1071,7 +1104,7 @@ def validate_formulas_data(formulas_data: dict[str, Any], variables_data: dict[s
         assert isinstance(formula_data, dict)
         formula_type = normalize_formula_type(formula_data)
         variable_info = variables_data.get(variable_name, {})
-        variable_schema_type = "quantitative" if "classification" in variable_info or "skew" in variable_info else "categorical nominal"
+        variable_schema_type = "quantitative" if variable_info.get("measurement_level") in ALLOWED_QUANTITATIVE_MEASUREMENT_LEVELS else "categorical nominal"
         if variable_info.get("measurement_level") == "Ordinal":
             variable_schema_type = "categorical ordinal"
 
@@ -1404,6 +1437,10 @@ def validate_variables_data(data: dict[str, Any]) -> list[ValidationError]:
         error = validate_variable_field_types(variable_name, variable_data, schema_type)
         if error is not None:
             errors.append(error)
+
+        schema_consistency_error = validate_variable_schema_consistency(variable_name, variable_data)
+        if schema_consistency_error is not None:
+            errors.append(schema_consistency_error)
 
     return errors
 

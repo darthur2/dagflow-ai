@@ -101,10 +101,14 @@ The following is a minimal example of a formula list, including the schema for a
 }
 ```
 
-Transformations should only be used when a a plain linear or generalized linear model does not sufficiently explain relationships between predictors and response. These should not be interpreted as transformations one would apply when trying to "linearize" relationships between predictors and response. They should also not be interpreted as transformations one would apply to "normalize" a response. They should be interpreted as transformations that should be applied to better capture components of the data generating process that aren't reflected in a linear or generalized linear model.
+Use transformations for predictors only when the situation would realistically warrant it and make sure the corresponding coefficient is selected after accounting for this transformation.
 
-If transformations are applied, then the name for the variable should be updated accordingly (e.g., log(predictor_name) or predictor_name_2).
+When selecting values for signal-to-noise (SNR) ratios, keep the following in mind:
 
-Transformations can be especially useful for modeling nonlinear relationships between variables (e.g., y = ax^w can be represented as log(y) = log(a) + w*log(x)).
+- The SNR for exponential responses is between 0 and 1
+- The SNR for gamma responses is between 0 and shape
+- The SNR for log-normal responses is between 0 and 1/(e^log_standard_deviation - 1)
+- The SNR for geometric responses is between 0 and 1
+- The SNR for negative binomial responses is between 0 and shape
 
 Always update the formula list by editing `synthdata/formulas.json`. DO NOT respond with or summarize the list to the synthesizer.
