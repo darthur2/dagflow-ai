@@ -263,25 +263,21 @@ class ExponentialRegressor:
 
         initial_beta_0 = self._feasible_initial_guess()
 
-        def residual(beta_0: float) -> float:
+        def residuals(params: np.ndarray) -> np.ndarray:
+            beta_0 = float(params[0])
             try:
-                return self.target_mean_value(beta_0) - self.target_mean
+                return np.array([self.target_mean_value(beta_0) - self.target_mean], dtype=float)
             except ValueError:
-                return 1e6
+                return np.array([1e6], dtype=float)
 
-        lower = initial_beta_0 - 50.0
-        upper = initial_beta_0 + 50.0
-        lower_residual = residual(lower)
-        upper_residual = residual(upper)
-        while lower_residual * upper_residual > 0:
-            lower -= 50.0
-            upper += 50.0
-            lower_residual = residual(lower)
-            upper_residual = residual(upper)
-        result = optimize.root_scalar(residual, bracket=(lower, upper), method="brentq")
+        result = optimize.least_squares(
+            residuals,
+            x0=np.array([initial_beta_0], dtype=float),
+            bounds=([-np.inf], [np.inf]),
+        )
 
-        if not result.converged:
-            raise ValueError("Unable to calibrate ExponentialRegressor")
+        if not result.success:
+            raise ValueError(f"Unable to calibrate ExponentialRegressor: {result.message}")
 
         return ExponentialRegressor(
             target_mean=self.target_mean,
@@ -291,7 +287,7 @@ class ExponentialRegressor:
             beta_1_init=self.beta_1_init,
             predictor_names=self.predictor_names,
             predictor_transformations=None,
-            beta_0=float(result.root),
+            beta_0=float(result.x[0]),
         )
 
     def sample(self, n: int) -> np.ndarray:
@@ -837,18 +833,21 @@ class BernoulliRegressor:
 
         initial_beta_0 = self._feasible_initial_guess()
 
-        def residual(beta_0: float) -> float:
+        def residuals(params: np.ndarray) -> np.ndarray:
+            beta_0 = float(params[0])
             try:
-                return self.target_mean_value(beta_0) - self.target_mean
+                return np.array([self.target_mean_value(beta_0) - self.target_mean], dtype=float)
             except ValueError:
-                return 1e6
+                return np.array([1e6], dtype=float)
 
-        lower = initial_beta_0 - 50.0
-        upper = initial_beta_0 + 50.0
-        result = optimize.root_scalar(residual, bracket=(lower, upper), method="brentq")
+        result = optimize.least_squares(
+            residuals,
+            x0=np.array([initial_beta_0], dtype=float),
+            bounds=([-np.inf], [np.inf]),
+        )
 
-        if not result.converged:
-            raise ValueError("Unable to calibrate BernoulliRegressor")
+        if not result.success:
+            raise ValueError(f"Unable to calibrate BernoulliRegressor: {result.message}")
 
         return BernoulliRegressor(
             target_mean=self.target_mean,
@@ -858,7 +857,7 @@ class BernoulliRegressor:
             predictor_transformations=None,
             min=self.min,
             max=self.max,
-            beta_0=float(result.root),
+            beta_0=float(result.x[0]),
         )
 
     def sample(self, n: int) -> np.ndarray:
@@ -941,18 +940,21 @@ class BinomialRegressor:
 
         initial_beta_0 = self._feasible_initial_guess()
 
-        def residual(beta_0: float) -> float:
+        def residuals(params: np.ndarray) -> np.ndarray:
+            beta_0 = float(params[0])
             try:
-                return self.target_mean_value(beta_0) - self.target_mean
+                return np.array([self.target_mean_value(beta_0) - self.target_mean], dtype=float)
             except ValueError:
-                return 1e6
+                return np.array([1e6], dtype=float)
 
-        lower = initial_beta_0 - 4.0
-        upper = initial_beta_0 + 4.0
-        result = optimize.root_scalar(residual, bracket=(lower, upper), method="brentq")
+        result = optimize.least_squares(
+            residuals,
+            x0=np.array([initial_beta_0], dtype=float),
+            bounds=([-np.inf], [np.inf]),
+        )
 
-        if not result.converged:
-            raise ValueError("Unable to calibrate BinomialRegressor")
+        if not result.success:
+            raise ValueError(f"Unable to calibrate BinomialRegressor: {result.message}")
 
         return BinomialRegressor(
             target_mean=self.target_mean,
@@ -963,7 +965,7 @@ class BinomialRegressor:
             max=self.max,
             predictor_names=self.predictor_names,
             predictor_transformations=None,
-            beta_0=float(result.root),
+            beta_0=float(result.x[0]),
         )
 
     def sample(self, n: int) -> np.ndarray:
