@@ -191,7 +191,6 @@ class NormalRegressor:
 @dataclass(frozen=True)
 class ExponentialRegressor:
     target_mean: float
-    target_snr: float
     min: float
     max: float
     X: np.ndarray
@@ -199,7 +198,6 @@ class ExponentialRegressor:
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
-    c: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
@@ -211,19 +209,17 @@ class ExponentialRegressor:
             raise ValueError("beta_1_init must have one coefficient per column in X")
         if self.target_mean <= 0:
             raise ValueError("target_mean must be positive")
-        if not 0.0 < self.target_snr < 1.0:
-            raise ValueError("target_snr must be in (0, 1)")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
         object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
-        return beta_0 + self.X @ (c * self.beta_1_init)
+    def _linear_predictor(self, beta_0: float) -> np.ndarray:
+        return beta_0 + self.X @ self.beta_1_init
 
-    def _row_moments(self, beta_0: float, c: float) -> tuple[np.ndarray, np.ndarray]:
-        eta = self._linear_predictor(beta_0, c)
+    def _row_moments(self, beta_0: float) -> tuple[np.ndarray, np.ndarray]:
+        eta = self._linear_predictor(beta_0)
         lam = np.exp(-eta)
         alpha = 0.0
         beta = 1000.0
@@ -240,59 +236,40 @@ class ExponentialRegressor:
         var = second_moment - mean**2
         return mean, var
 
-    def target_mean_value(self, beta_0: float, c: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, c)
+    def target_mean_value(self, beta_0: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0)
         return float(cond_mean.mean())
 
-    def target_variance_value(self, beta_0: float, c: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c)
-        return float(cond_mean.var() + cond_var.mean())
-
-    def target_snr_value(self, beta_0: float, c: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c)
-        within = float(cond_var.mean())
-        if within <= 0:
-            raise ValueError("Conditional variance is non-positive")
-        return float(cond_mean.var() / within)
-
-    def _feasible_initial_guess(self) -> tuple[float, float]:
+    def _feasible_initial_guess(self) -> float:
         x_mean = np.mean(self.X @ self.beta_1_init)
-        beta_0 = np.log(self.target_mean) - x_mean
-        c = 1.0
-        return beta_0, c
+        return float(np.log(self.target_mean) - x_mean)
 
     def calibrate(self) -> "ExponentialRegressor":
-        if self.beta_0 is not None and self.c is not None:
+        if self.beta_0 is not None:
             return self
 
-        initial_beta_0, initial_c = self._feasible_initial_guess()
+        initial_beta_0 = self._feasible_initial_guess()
 
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, c = params
+        def residual(beta_0: float) -> float:
             try:
-                mean_residual = self.target_mean_value(beta_0, c) - self.target_mean
-                snr_residual = self.target_snr_value(beta_0, c) - self.target_snr
-                return np.array([mean_residual, snr_residual], dtype=float)
+                return self.target_mean_value(beta_0) - self.target_mean
             except ValueError:
-                return np.array([1e6, 1e6], dtype=float)
+                return 1e6
 
-        result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0, initial_c], dtype=float),
-            bounds=([-np.inf, 0.0], [np.inf, np.inf]),
-        )
+        lower = initial_beta_0 - 50.0
+        upper = initial_beta_0 + 50.0
+        result = optimize.root_scalar(residual, bracket=(lower, upper), method="brentq")
 
-        if not result.success:
-            raise ValueError(f"Unable to calibrate ExponentialRegressor: {result.message}")
+        if not result.converged:
+            raise ValueError("Unable to calibrate ExponentialRegressor")
 
-        beta_0, c = result.x
-        return replace(self, beta_0=float(beta_0), c=float(c))
+        return replace(self, beta_0=float(result.root))
 
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.c is None:
+        if self.beta_0 is None:
             raise ValueError("ExponentialRegressor must be calibrated before sampling")
 
-        eta = self._linear_predictor(self.beta_0, self.c)
+        eta = self._linear_predictor(self.beta_0)
         lam = np.exp(-np.repeat(eta, int(np.ceil(n / len(eta))))[:n])
         samples = np.empty(n, dtype=float)
         rng = np.random.default_rng()
