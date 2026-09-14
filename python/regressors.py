@@ -1209,7 +1209,6 @@ class GeometricRegressor:
 class NegativeBinomialRegressor:
     target_mean: float
     target_variance: float
-    target_snr: float
     min: int
     max: int
     X: np.ndarray
@@ -1218,7 +1217,6 @@ class NegativeBinomialRegressor:
     predictor_transformations: dict[str, str] | None = None
     shape: float | None = None
     beta_0: float | None = None
-    c: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
@@ -1232,97 +1230,83 @@ class NegativeBinomialRegressor:
             raise ValueError("target_mean must be positive")
         if self.target_variance <= 0:
             raise ValueError("target_variance must be positive")
-        if self.target_snr <= 0:
-            raise ValueError("target_snr must be positive")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
         object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
-        return beta_0 + self.X @ (c * self.beta_1_init)
+    def _linear_predictor(self, beta_0: float) -> np.ndarray:
+        return beta_0 + self.X @ self.beta_1_init
 
-    def _mean_param(self, beta_0: float, c: float) -> np.ndarray:
-        return np.exp(self._linear_predictor(beta_0, c))
+    def _mean_param(self, beta_0: float) -> np.ndarray:
+        return np.exp(self._linear_predictor(beta_0))
 
-    def _row_moments(self, beta_0: float, c: float, shape: float) -> tuple[np.ndarray, np.ndarray]:
-        mean_param = self._mean_param(beta_0, c)
-        cond_mean = np.empty(len(mean_param), dtype=float)
-        cond_var = np.empty(len(mean_param), dtype=float)
-        for idx, current_mean in enumerate(mean_param):
-            p = shape / (shape + current_mean)
-            dist = stats.nbinom(shape, p)
-            lower = dist.cdf(self.min - 1)
-            upper = dist.cdf(self.max)
-            if lower >= upper:
-                raise ValueError("truncation interval has zero probability mass")
-            support = np.arange(self.min, self.max + 1, dtype=float)
-            pmf = dist.pmf(support)
-            pmf = pmf / float(np.sum(pmf))
-            row_mean = float(np.sum(support * pmf))
-            row_second = float(np.sum((support**2) * pmf))
-            cond_mean[idx] = row_mean
-            cond_var[idx] = row_second - row_mean**2
+    def _row_moments(self, beta_0: float, shape: float) -> tuple[np.ndarray, np.ndarray]:
+        mean_param = self._mean_param(beta_0)
+        support = np.arange(self.min, self.max + 1, dtype=float)
+        mean_matrix = mean_param[:, None]
+        p_matrix = shape / (shape + mean_matrix)
+        pmf = stats.nbinom(shape, p_matrix).pmf(support)
+        pmf_sum = np.sum(pmf, axis=1, keepdims=True)
+        lower = stats.nbinom(shape, shape / (shape + mean_param)).cdf(self.min - 1)
+        upper = stats.nbinom(shape, shape / (shape + mean_param)).cdf(self.max)
+        if np.any(lower >= upper) or np.any(pmf_sum <= 0):
+            raise ValueError("truncation interval has zero probability mass")
+
+        pmf = pmf / pmf_sum
+        cond_mean = np.sum(support * pmf, axis=1)
+        cond_second = np.sum((support**2) * pmf, axis=1)
+        cond_var = cond_second - cond_mean**2
         return cond_mean, cond_var
 
-    def target_mean_value(self, beta_0: float, c: float, shape: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, c, shape)
+    def target_mean_value(self, beta_0: float, shape: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0, shape)
         return float(cond_mean.mean())
 
-    def target_variance_value(self, beta_0: float, c: float, shape: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c, shape)
+    def target_variance_value(self, beta_0: float, shape: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, shape)
         return float(cond_mean.var() + cond_var.mean())
 
-    def target_snr_value(self, beta_0: float, c: float, shape: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c, shape)
-        within = float(cond_var.mean())
-        if within <= 0:
-            raise ValueError("Conditional variance is non-positive")
-        return float(cond_mean.var() / within)
-
-    def _feasible_initial_guess(self) -> tuple[float, float, float]:
-        shape = max(self.target_snr + 1.0, 1.0 + 1e-3)
-        mean_param = max(self.target_mean, 1e-6)
-        beta_0 = float(np.log(mean_param))
-        c = 1.0
-        return beta_0, c, shape
+    def _feasible_initial_guess(self) -> tuple[float, float]:
+        beta_0 = float(np.log(max(self.target_mean, 1e-6)))
+        shape = max(self.target_mean**2 / max(self.target_variance - self.target_mean, 1e-6), 1.0 + 1e-3)
+        return beta_0, shape
 
     def calibrate(self) -> "NegativeBinomialRegressor":
-        if self.beta_0 is not None and self.c is not None and self.shape is not None:
+        if self.beta_0 is not None and self.shape is not None:
             return self
 
-        initial_beta_0, initial_c, initial_shape = self._feasible_initial_guess()
+        initial_beta_0, initial_shape = self._feasible_initial_guess()
 
         def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, c, log_shape = params
+            beta_0, log_shape = params
             shape = float(np.exp(log_shape))
             try:
-                mean_residual = self.target_mean_value(beta_0, c, shape) - self.target_mean
-                variance_residual = self.target_variance_value(beta_0, c, shape) - self.target_variance
-                snr_residual = self.target_snr_value(beta_0, c, shape) - self.target_snr
-                return np.array([mean_residual, variance_residual, snr_residual], dtype=float)
+                mean_residual = self.target_mean_value(beta_0, shape) - self.target_mean
+                variance_residual = self.target_variance_value(beta_0, shape) - self.target_variance
+                return np.array([mean_residual, variance_residual], dtype=float)
             except ValueError:
-                return np.array([1e6, 1e6, 1e6], dtype=float)
+                return np.array([1e6, 1e6], dtype=float)
 
         result = optimize.least_squares(
             residuals,
-            x0=np.array([initial_beta_0, initial_c, np.log(initial_shape)], dtype=float),
-            bounds=([-np.inf, 0.0, -np.inf], [np.inf, np.inf, np.inf]),
+            x0=np.array([initial_beta_0, np.log(initial_shape)], dtype=float),
+            bounds=([-np.inf, -np.inf], [np.inf, np.inf]),
         )
 
         if not result.success:
             raise ValueError(f"Unable to calibrate NegativeBinomialRegressor: {result.message}")
 
-        beta_0, c, log_shape = result.x
+        beta_0, log_shape = result.x
         shape = float(np.exp(log_shape))
-        return replace(self, beta_0=float(beta_0), c=float(c), shape=shape)
+        return replace(self, beta_0=float(beta_0), shape=shape)
 
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.c is None or self.shape is None:
+        if self.beta_0 is None or self.shape is None:
             raise ValueError("NegativeBinomialRegressor must be calibrated before sampling")
 
-        mean_param = np.repeat(self._mean_param(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        mean_param = np.repeat(self._mean_param(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
         samples = np.empty(n, dtype=float)
         rng = np.random.default_rng()
         for idx, current_mean in enumerate(mean_param):
