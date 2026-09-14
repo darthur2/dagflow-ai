@@ -219,6 +219,11 @@ class Bernoulli:
             raise ValueError("success_prob must be in [0, 1]")
         return _as_1d_array(stats.bernoulli.rvs(self.success_prob, size=n))
 
+    def target_mean(self) -> float:
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        return float(self.success_prob)
+
 
 @dataclass(frozen=True)
 class Binomial:

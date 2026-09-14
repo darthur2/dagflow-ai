@@ -786,7 +786,6 @@ class DiscreteUniformRegressor:
 @dataclass(frozen=True)
 class BernoulliRegressor:
     target_mean: float
-    target_snr: float
     X: np.ndarray
     beta_1_init: np.ndarray
     predictor_names: list[str] | None = None
@@ -794,7 +793,6 @@ class BernoulliRegressor:
     min: float = 0.0
     max: float = 1.0
     beta_0: float | None = None
-    c: float | None = None
 
     def __post_init__(self) -> None:
         X = np.asarray(self.X, dtype=float)
@@ -805,69 +803,62 @@ class BernoulliRegressor:
             raise ValueError("beta_1_init must have one coefficient per column in X")
         if not 0.0 < self.target_mean < 1.0:
             raise ValueError("target_mean must be in (0, 1)")
-        if self.target_snr <= 0:
-            raise ValueError("target_snr must be positive")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
         object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
-        return beta_0 + self.X @ (c * self.beta_1_init)
+    def _linear_predictor(self, beta_0: float) -> np.ndarray:
+        return beta_0 + self.X @ self.beta_1_init
 
-    def _probability(self, beta_0: float, c: float) -> np.ndarray:
-        eta = self._linear_predictor(beta_0, c)
+    def _probability(self, beta_0: float) -> np.ndarray:
+        eta = self._linear_predictor(beta_0)
         return 1.0 / (1.0 + np.exp(-eta))
 
-    def target_mean_value(self, beta_0: float, c: float) -> float:
-        return float(self._probability(beta_0, c).mean())
+    def target_mean_value(self, beta_0: float) -> float:
+        return float(self._probability(beta_0).mean())
 
-    def target_snr_value(self, beta_0: float, c: float) -> float:
-        p = self._probability(beta_0, c)
-        within = float(np.mean(p * (1.0 - p)))
-        if within <= 0:
-            raise ValueError("Conditional variance is non-positive")
-        return float(p.var() / within)
-
-    def _feasible_initial_guess(self) -> tuple[float, float]:
+    def _feasible_initial_guess(self) -> float:
         x_mean = np.mean(self.X @ self.beta_1_init)
         beta_0 = np.log(self.target_mean / (1.0 - self.target_mean)) - x_mean
-        c = 1.0
-        return beta_0, c
+        return beta_0
 
     def calibrate(self) -> "BernoulliRegressor":
-        if self.beta_0 is not None and self.c is not None:
+        if self.beta_0 is not None:
             return self
 
-        initial_beta_0, initial_c = self._feasible_initial_guess()
+        initial_beta_0 = self._feasible_initial_guess()
 
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, c = params
+        def residual(beta_0: float) -> float:
             try:
-                mean_residual = self.target_mean_value(beta_0, c) - self.target_mean
-                snr_residual = self.target_snr_value(beta_0, c) - self.target_snr
-                return np.array([mean_residual, snr_residual], dtype=float)
+                return self.target_mean_value(beta_0) - self.target_mean
             except ValueError:
-                return np.array([1e6, 1e6], dtype=float)
+                return 1e6
 
-        result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0, initial_c], dtype=float),
-            bounds=([-np.inf, 0.0], [np.inf, np.inf]),
+        lower = initial_beta_0 - 50.0
+        upper = initial_beta_0 + 50.0
+        result = optimize.root_scalar(residual, bracket=(lower, upper), method="brentq")
+
+        if not result.converged:
+            raise ValueError("Unable to calibrate BernoulliRegressor")
+
+        return BernoulliRegressor(
+            target_mean=self.target_mean,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            min=self.min,
+            max=self.max,
+            beta_0=float(result.root),
         )
 
-        if not result.success:
-            raise ValueError(f"Unable to calibrate BernoulliRegressor: {result.message}")
-
-        beta_0, c = result.x
-        return replace(self, beta_0=float(beta_0), c=float(c))
-
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.c is None:
+        if self.beta_0 is None:
             raise ValueError("BernoulliRegressor must be calibrated before sampling")
 
-        p = np.repeat(self._probability(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        p = np.repeat(self._probability(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
         samples = stats.bernoulli.rvs(p, size=n)
         return _as_1d_array(samples)
 
