@@ -86,7 +86,9 @@ def render_category_probability_table(categories: list, probabilities: list) -> 
 
 
 def render_distribution_details(selected_name: str, distributions: dict) -> None:
-    item = distributions[selected_name]
+    item = dict(distributions[selected_name])
+    item["__name__"] = selected_name
+    details_key = f"distribution_details_{selected_name}"
     left, right = st.columns([1, 1.4])
 
     with left:
@@ -110,11 +112,14 @@ def render_distribution_details(selected_name: str, distributions: dict) -> None
                 right_col.write(prettify_text(field_value))
 
     with right:
-        chart = build_distribution_chart(item)
-        if chart is None:
-            st.info("No chart available for this distribution.")
-        else:
-            st.altair_chart(chart, use_container_width=True)
+        with st.container(border=False):
+            st.markdown(f"<div data-distribution-details='{details_key}'></div>", unsafe_allow_html=True)
+            chart_placeholder = st.empty()
+            chart = build_distribution_chart(item)
+            if chart is None:
+                chart_placeholder.info("No chart available for this distribution.")
+            else:
+                chart_placeholder.altair_chart(chart, use_container_width=True)
 
 
 def render_field_value(field_name: str, field_value) -> None:
@@ -405,15 +410,16 @@ def render_formulas_tab(formulas_data, distributions_data) -> None:
 def build_distribution_chart(item: dict):
     distribution_name = item.get("distribution", "")
     parameters = {key: value for key, value in item.items() if key != "distribution"}
+    chart_title = item.get("__name__")
 
     if distribution_name in {"Normal", "Exponential", "Gamma", "Log Normal", "Beta", "Uniform"}:
-        return build_truncated_density_chart(distribution_name, parameters)
+        return build_truncated_density_chart(distribution_name, parameters, chart_title)
 
     if distribution_name in {"Discrete Uniform", "Bernoulli", "Binomial", "Poisson", "Geometric", "Negative Binomial"}:
-        return build_truncated_pmf_chart(distribution_name, parameters)
+        return build_truncated_pmf_chart(distribution_name, parameters, chart_title)
 
     if distribution_name in {"Categorical Ordinal", "Categorical Nominal"}:
-        return build_categorical_chart(parameters)
+        return build_categorical_chart(parameters, chart_title)
 
     return None
 
@@ -431,7 +437,7 @@ def apply_min_max_mask(values: np.ndarray, min_value, max_value):
     return mask
 
 
-def build_truncated_density_chart(distribution_name: str, parameters: dict):
+def build_truncated_density_chart(distribution_name: str, parameters: dict, chart_title: str | None = None):
     min_value, max_value = get_bounds(parameters)
     dist = density_distribution(distribution_name, parameters)
     if dist is None:
@@ -456,11 +462,11 @@ def build_truncated_density_chart(distribution_name: str, parameters: dict):
             y=alt.Y("density:Q", title="Density"),
             tooltip=[alt.Tooltip("x:Q", title="x"), alt.Tooltip("density:Q", title="density")],
         )
-        .properties(height=320)
+        .properties(height=320, title=chart_title or distribution_name)
     )
 
 
-def build_truncated_pmf_chart(distribution_name: str, parameters: dict):
+def build_truncated_pmf_chart(distribution_name: str, parameters: dict, chart_title: str | None = None):
     min_value, max_value = get_bounds(parameters)
 
     dist = pmf_distribution(distribution_name, parameters)
@@ -487,7 +493,7 @@ def build_truncated_pmf_chart(distribution_name: str, parameters: dict):
             y=alt.Y("probability:Q", title="Probability"),
             tooltip=[alt.Tooltip("x:O", title="x"), alt.Tooltip("probability:Q", title="probability")],
         )
-        .properties(height=320)
+        .properties(height=320, title=chart_title or distribution_name)
     )
 
 
@@ -566,7 +572,7 @@ def pmf_support(distribution_name: str, parameters: dict, min_value, max_value):
     return np.array([])
 
 
-def build_categorical_chart(parameters: dict):
+def build_categorical_chart(parameters: dict, chart_title: str | None = None):
     categories = parameters.get("categories", [])
     probabilities = parameters.get("probabilities", [])
     if not categories or not probabilities:
@@ -584,7 +590,7 @@ def build_categorical_chart(parameters: dict):
             y=alt.Y("probability:Q", title="Probability"),
             tooltip=[alt.Tooltip("category:N", title="Category"), alt.Tooltip("probability:Q", title="Probability")],
         )
-        .properties(height=320)
+        .properties(height=320, title=chart_title or "Categories")
     )
 
 
