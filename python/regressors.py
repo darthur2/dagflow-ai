@@ -173,7 +173,20 @@ class NormalRegressor:
 
         beta_0, c, log_sigma2 = result.x
         sigma2 = float(np.exp(log_sigma2))
-        return replace(self, beta_0=float(beta_0), c=float(c), sigma2=sigma2)
+        return NormalRegressor(
+            target_mean=self.target_mean,
+            target_variance=self.target_variance,
+            target_snr=self.target_snr,
+            min=self.min,
+            max=self.max,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=float(beta_0),
+            c=float(c),
+            sigma2=sigma2,
+        )
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None or self.c is None or self.sigma2 is None:
@@ -263,7 +276,16 @@ class ExponentialRegressor:
         if not result.converged:
             raise ValueError("Unable to calibrate ExponentialRegressor")
 
-        return replace(self, beta_0=float(result.root))
+        return ExponentialRegressor(
+            target_mean=self.target_mean,
+            min=self.min,
+            max=self.max,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=float(result.root),
+        )
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None:
@@ -373,7 +395,18 @@ class GammaRegressor:
             raise ValueError(f"Unable to calibrate GammaRegressor: {result.message}")
 
         beta_0 = float(result.x[0])
-        return replace(self, beta_0=beta_0, shape=float(shape))
+        return GammaRegressor(
+            target_mean=self.target_mean,
+            target_variance=self.target_variance,
+            min=self.min,
+            max=self.max,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=beta_0,
+            shape=float(shape),
+        )
 
     def calibrate(self) -> "GammaRegressor":
         if self.beta_0 is not None and self.shape is not None:
@@ -416,7 +449,6 @@ class GammaRegressor:
 class LogNormalRegressor:
     target_mean: float
     target_variance: float
-    target_snr: float
     min: float
     max: float
     X: np.ndarray
@@ -424,7 +456,6 @@ class LogNormalRegressor:
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
-    c: float | None = None
     sigma2: float | None = None
 
     def __post_init__(self) -> None:
@@ -439,82 +470,103 @@ class LogNormalRegressor:
             raise ValueError("target_mean must be positive")
         if self.target_variance <= 0:
             raise ValueError("target_variance must be positive")
-        if self.target_snr <= 0:
-            raise ValueError("target_snr must be positive")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
         object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
-        return beta_0 + self.X @ (c * self.beta_1_init)
+    def _linear_predictor(self, beta_0: float) -> np.ndarray:
+        return beta_0 + self.X @ self.beta_1_init
 
-    def _row_moments(self, beta_0: float, c: float, sigma2: float) -> tuple[np.ndarray, np.ndarray]:
-        eta = self._linear_predictor(beta_0, c)
-        mean = np.exp(eta + 0.5 * sigma2)
-        var = (np.exp(sigma2) - 1.0) * np.exp(2.0 * eta + sigma2)
+    def _row_moments(self, beta_0: float, sigma2: float) -> tuple[np.ndarray, np.ndarray]:
+        eta = self._linear_predictor(beta_0)
+        sigma = np.sqrt(sigma2)
+        lower = np.log(self.min)
+        upper = np.log(self.max)
+        alpha = (lower - eta) / sigma
+        beta = (upper - eta) / sigma
+        denom = stats.norm.cdf(beta) - stats.norm.cdf(alpha)
+        if np.any(denom <= 0):
+            raise ValueError("truncation interval has zero probability mass")
+
+        mean = np.exp(eta + 0.5 * sigma2) * (
+            stats.norm.cdf(beta - sigma) - stats.norm.cdf(alpha - sigma)
+        ) / denom
+        second_moment = np.exp(2.0 * eta + 2.0 * sigma2) * (
+            stats.norm.cdf(beta - 2.0 * sigma) - stats.norm.cdf(alpha - 2.0 * sigma)
+        ) / denom
+        var = second_moment - mean**2
         return mean, var
 
-    def target_mean_value(self, beta_0: float, c: float, sigma2: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, c, sigma2)
+    def target_mean_value(self, beta_0: float, sigma2: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0, sigma2)
         return float(cond_mean.mean())
 
-    def target_variance_value(self, beta_0: float, c: float, sigma2: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c, sigma2)
+    def target_variance_value(self, beta_0: float, sigma2: float) -> float:
+        cond_mean, cond_var = self._row_moments(beta_0, sigma2)
         return float(cond_mean.var() + cond_var.mean())
 
-    def target_snr_value(self, beta_0: float, c: float, sigma2: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, c, sigma2)
-        within = float(cond_var.mean())
-        if within <= 0:
-            raise ValueError("Conditional variance is non-positive")
-        return float(cond_mean.var() / within)
-
-    def _feasible_initial_guess(self) -> tuple[float, float, float]:
+    def _feasible_initial_guess(self) -> tuple[float, float]:
         x_mean = np.mean(self.X @ self.beta_1_init)
         beta_0 = np.log(self.target_mean) - x_mean
-        c = 1.0
         sigma2 = 0.5
-        return beta_0, c, sigma2
+        return beta_0, sigma2
 
     def calibrate(self) -> "LogNormalRegressor":
-        if self.beta_0 is not None and self.c is not None and self.sigma2 is not None:
+        if self.beta_0 is not None and self.sigma2 is not None:
             return self
 
-        initial_beta_0, initial_c, initial_sigma2 = self._feasible_initial_guess()
+        initial_beta_0, initial_sigma2 = self._feasible_initial_guess()
 
         def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, c, log_sigma2 = params
+            beta_0, log_sigma2 = params
             sigma2 = float(np.exp(log_sigma2))
             try:
-                mean_residual = self.target_mean_value(beta_0, c, sigma2) - self.target_mean
-                variance_residual = self.target_variance_value(beta_0, c, sigma2) - self.target_variance
-                snr_residual = self.target_snr_value(beta_0, c, sigma2) - self.target_snr
-                return np.array([mean_residual, variance_residual, snr_residual], dtype=float)
+                mean_residual = self.target_mean_value(beta_0, sigma2) - self.target_mean
+                variance_residual = self.target_variance_value(beta_0, sigma2) - self.target_variance
+                return np.array([mean_residual, variance_residual], dtype=float)
             except ValueError:
-                return np.array([1e6, 1e6, 1e6], dtype=float)
+                return np.array([1e6, 1e6], dtype=float)
 
         result = optimize.least_squares(
             residuals,
-            x0=np.array([initial_beta_0, initial_c, np.log(initial_sigma2)], dtype=float),
-            bounds=([-np.inf, 0.0, -np.inf], [np.inf, np.inf, np.inf]),
+            x0=np.array([initial_beta_0, np.log(initial_sigma2)], dtype=float),
+            bounds=([-np.inf, -np.inf], [np.inf, np.inf]),
         )
 
         if not result.success:
             raise ValueError(f"Unable to calibrate LogNormalRegressor: {result.message}")
 
-        beta_0, c, log_sigma2 = result.x
+        beta_0, log_sigma2 = result.x
         sigma2 = float(np.exp(log_sigma2))
-        return replace(self, beta_0=float(beta_0), c=float(c), sigma2=sigma2)
+        return LogNormalRegressor(
+            target_mean=self.target_mean,
+            target_variance=self.target_variance,
+            min=self.min,
+            max=self.max,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=float(beta_0),
+            sigma2=sigma2,
+        )
 
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.c is None or self.sigma2 is None:
+        if self.beta_0 is None or self.sigma2 is None:
             raise ValueError("LogNormalRegressor must be calibrated before sampling")
 
-        eta = self._linear_predictor(self.beta_0, self.c)
+        eta = self._linear_predictor(self.beta_0)
         mean = np.repeat(eta, int(np.ceil(n / len(eta))))[:n]
-        samples = stats.lognorm.rvs(s=np.sqrt(self.sigma2), scale=np.exp(mean), size=n)
+        dist = stats.lognorm(s=np.sqrt(self.sigma2), scale=np.exp(mean))
+        lower = dist.cdf(self.min)
+        upper = dist.cdf(self.max)
+        if np.any(lower >= upper):
+            raise ValueError("truncation interval has zero probability mass")
+
+        uniforms = np.random.uniform(lower, upper, size=n)
+        samples = dist.ppf(uniforms)
         return _as_1d_array(samples)
 
 
@@ -617,7 +669,20 @@ class BetaRegressor:
 
         beta_0, c, log_phi = result.x
         phi = float(np.exp(log_phi))
-        return replace(self, beta_0=float(beta_0), c=float(c), phi=phi)
+        return BetaRegressor(
+            target_mean=self.target_mean,
+            target_variance=self.target_variance,
+            target_snr=self.target_snr,
+            min=self.min,
+            max=self.max,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=float(beta_0),
+            c=float(c),
+            phi=phi,
+        )
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None or self.c is None or self.phi is None:
@@ -1379,7 +1444,14 @@ class CategoricalNominalRegressor:
         if not result.success:
             raise ValueError(f"Unable to calibrate CategoricalNominalRegressor: {result.message}")
 
-        return replace(self, beta_0=np.asarray(result.x, dtype=float))
+        return CategoricalNominalRegressor(
+            target_probabilities=self.target_probabilities,
+            X=self.X,
+            beta_1=self.beta_1,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=np.asarray(result.x, dtype=float),
+        )
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None:
@@ -1485,7 +1557,14 @@ class CategoricalOrdinalRegressor:
         if not result.success:
             raise ValueError(f"Unable to calibrate CategoricalOrdinalRegressor: {result.message}")
 
-        return replace(self, beta_0=np.asarray(np.maximum.accumulate(result.x), dtype=float))
+        return CategoricalOrdinalRegressor(
+            target_probabilities=self.target_probabilities,
+            X=self.X,
+            beta_1=self.beta_1,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=np.asarray(np.maximum.accumulate(result.x), dtype=float),
+        )
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None:
