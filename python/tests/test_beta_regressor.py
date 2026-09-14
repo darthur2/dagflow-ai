@@ -56,3 +56,64 @@ def test_beta_regressor_calibrates_and_samples():
     print(f"phi: {calibrated.phi}")
     print(f"mean: target={regressor.target_mean} sample={sample_mean}")
     print(f"variance: target={regressor.target_variance} sample={sample_variance}")
+
+
+def test_beta_regressor_property_tax_rate_calibrates_and_samples():
+    np.random.seed(0)
+
+    metro_region = CategoricalNominal(
+        categories=["Midwest", "South", "Northeast", "West"],
+        probabilities=[0.28, 0.33, 0.17, 0.22],
+    ).sample(100)
+    municipality = CategoricalNominal(
+        categories=["Northfield", "Maple Grove", "Riverton", "Oak Park", "Cedar Hills"],
+        probabilities=[0.18, 0.24, 0.22, 0.2, 0.16],
+    ).sample(100)
+
+    south = (metro_region == "South").astype(float)
+    northeast = (metro_region == "Northeast").astype(float)
+    west = (metro_region == "West").astype(float)
+    maple_grove = (municipality == "Maple Grove").astype(float)
+    riverton = (municipality == "Riverton").astype(float)
+    oak_park = (municipality == "Oak Park").astype(float)
+    cedar_hills = (municipality == "Cedar Hills").astype(float)
+    X = np.column_stack([south, northeast, west, maple_grove, riverton, oak_park, cedar_hills])
+
+    response = Beta(shape_1=2.5, shape_2=8.0, min=0.5, max=3.5)
+    regressor = BetaRegressor(
+        target_mean=response.target_mean(),
+        target_variance=response.target_variance(),
+        min=0.5,
+        max=3.5,
+        X=X,
+        beta_1_init=np.array([0.08, 0.18, 0.14, 0.08, -0.06, 0.05, 0.1], dtype=float),
+        predictor_names=[
+            "metro_region",
+            "metro_region",
+            "metro_region",
+            "municipality",
+            "municipality",
+            "municipality",
+            "municipality",
+        ],
+    )
+
+    calibrated = regressor.calibrate()
+    samples = calibrated.sample(2000)
+
+    sample_mean = float(np.mean(samples))
+    sample_variance = float(np.var(samples))
+
+    print(f"beta_0: {calibrated.beta_0}")
+    print(f"phi: {calibrated.phi}")
+    print(f"mean: target={regressor.target_mean} sample={sample_mean}")
+    print(f"variance: target={regressor.target_variance} sample={sample_variance}")
+
+
+def main() -> None:
+    test_beta_regressor_calibrates_and_samples()
+    test_beta_regressor_property_tax_rate_calibrates_and_samples()
+
+
+if __name__ == "__main__":
+    main()
