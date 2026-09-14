@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, Exponential, Gamma, Normal
 from regressors import ExponentialRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_exponential_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     machine_temperature = Normal(mean=75.0, standard_deviation=4.0, min=60.0, max=90.0).sample(100)
@@ -22,13 +22,8 @@ def _build_x() -> np.ndarray:
 
     shift_evening = (shift_type == "evening").astype(float)
     shift_night = (shift_type == "night").astype(float)
-    return np.column_stack(
-        [machine_temperature, operator_experience_years, conveyor_speed, shift_evening, shift_night]
-    )
+    X = np.column_stack([machine_temperature, operator_experience_years, conveyor_speed, shift_evening, shift_night])
 
-
-def test_exponential_regressor_calibrates_and_samples():
-    X = _build_x()
     response = Exponential(rate=0.37, min=2.0, max=40.0)
     regressor = ExponentialRegressor(
         target_mean=response.target_mean(),

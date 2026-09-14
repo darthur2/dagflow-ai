@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, Gamma, Normal, Poisson
 from regressors import GammaRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_gamma_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     age = Normal(mean=52.0, standard_deviation=16.0, min=18.0, max=90.0).sample(100)
@@ -23,11 +23,8 @@ def _build_x() -> np.ndarray:
     insurance_medicare = (insurance == "Medicare").astype(float)
     insurance_medicaid = (insurance == "Medicaid").astype(float)
     insurance_uninsured = (insurance == "Uninsured").astype(float)
-    return np.column_stack([age, comorbidity, visits, insurance_medicare, insurance_medicaid, insurance_uninsured])
+    X = np.column_stack([age, comorbidity, visits, insurance_medicare, insurance_medicaid, insurance_uninsured])
 
-
-def test_gamma_regressor_calibrates_and_samples():
-    X = _build_x()
     response = Gamma(shape=2.5, rate=0.00025, min=0.0, max=50000.0)
     regressor = GammaRegressor(
         target_mean=response.target_mean(),

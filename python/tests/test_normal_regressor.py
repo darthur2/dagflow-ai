@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, LogNormal, Normal
 from regressors import NormalRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_normal_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     age = Normal(mean=50.0, standard_deviation=8.0, min=18.0, max=80.0).sample(100)
@@ -19,11 +19,8 @@ def _build_x() -> np.ndarray:
 
     smoke_former = (smoke == "former").astype(float)
     smoke_current = (smoke == "current").astype(float)
-    return np.column_stack([age, bmi, rhr, smoke_former, smoke_current])
+    X = np.column_stack([age, bmi, rhr, smoke_former, smoke_current])
 
-
-def test_normal_regressor_calibrates_and_samples():
-    X = _build_x()
     response = Normal(mean=125.0, standard_deviation=15.001355840493375, min=80.0, max=200.0)
     regressor = NormalRegressor(
         target_mean=response.target_mean(),

@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, Gamma, LogNormal, NegativeBinomial
 from regressors import NegativeBinomialRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_negative_binomial_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     ad_spend = LogNormal(log_mean=6.0, log_standard_deviation=0.35, min=50.0, max=5000.0).sample(100)
@@ -22,11 +22,8 @@ def _build_x() -> np.ndarray:
 
     active = (customer_segment == "active").astype(float)
     loyal = (customer_segment == "loyal").astype(float)
-    return np.column_stack([ad_spend, email_touchpoints, website_sessions, active, loyal])
+    X = np.column_stack([ad_spend, email_touchpoints, website_sessions, active, loyal])
 
-
-def test_negative_binomial_regressor_calibrates_and_samples():
-    X = _build_x()
     response = NegativeBinomial(shape=4.0, mean=12.0, min=0, max=50)
     regressor = NegativeBinomialRegressor(
         target_mean=response.target_mean(),

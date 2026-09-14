@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, Gamma, Geometric, LogNormal, Norma
 from regressors import GeometricRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_geometric_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     machine_temperature_c = Normal(mean=72.0, standard_deviation=6.0, min=55.0, max=90.0).sample(100)
@@ -22,13 +22,8 @@ def _build_x() -> np.ndarray:
 
     evening = (shift_type == "evening").astype(float)
     night = (shift_type == "night").astype(float)
-    return np.column_stack(
-        [machine_temperature_c, line_speed_mpm, operator_experience_years, evening, night]
-    )
+    X = np.column_stack([machine_temperature_c, line_speed_mpm, operator_experience_years, evening, night])
 
-
-def test_geometric_regressor_calibrates_and_samples():
-    X = _build_x()
     response = Geometric(success_prob=0.22, min=1, max=25)
     regressor = GeometricRegressor(
         target_mean=response.target_mean(),

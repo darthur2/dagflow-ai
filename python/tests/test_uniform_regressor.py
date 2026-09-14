@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, Gamma, Poisson, Beta, Uniform
 from regressors import UniformRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_uniform_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     average_handle_time_minutes = Gamma(shape=4.0, rate=0.4, min=0.0, max=30.0).sample(100)
@@ -22,13 +22,8 @@ def _build_x() -> np.ndarray:
 
     evening = (shift_type == "evening").astype(float)
     night = (shift_type == "night").astype(float)
-    return np.column_stack(
-        [average_handle_time_minutes, queue_length, staff_utilization_rate, evening, night]
-    )
+    X = np.column_stack([average_handle_time_minutes, queue_length, staff_utilization_rate, evening, night])
 
-
-def test_uniform_regressor_calibrates_and_samples():
-    X = _build_x()
     response = Uniform(min=0.0, max=10.0)
     regressor = UniformRegressor(
         target_snr=0.55,

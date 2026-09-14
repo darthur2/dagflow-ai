@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, LogNormal, NegativeBinomial, Poiss
 from regressors import CategoricalOrdinalRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_categorical_ordinal_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     mean_time_to_recovery_hours = LogNormal(log_mean=0.75, log_standard_deviation=0.6, min=0.1, max=72.0).sample(100)
@@ -23,13 +23,8 @@ def _build_x() -> np.ndarray:
     blue_green = (deployment_strategy == "Blue-Green").astype(float)
     canary = (deployment_strategy == "Canary").astype(float)
     recreate = (deployment_strategy == "Recreate").astype(float)
-    return np.column_stack(
-        [mean_time_to_recovery_hours, deployments_per_week, open_defect_count, blue_green, canary, recreate]
-    )
+    X = np.column_stack([mean_time_to_recovery_hours, deployments_per_week, open_defect_count, blue_green, canary, recreate])
 
-
-def test_categorical_ordinal_regressor_calibrates_and_samples():
-    X = _build_x()
     target_probabilities = np.array([0.45, 0.3, 0.18, 0.07], dtype=float)
     regressor = CategoricalOrdinalRegressor(
         target_probabilities=target_probabilities,

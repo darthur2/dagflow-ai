@@ -9,7 +9,7 @@ from distributions import Beta, CategoricalNominal, Gamma, LogNormal
 from regressors import LogNormalRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_lognormal_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     study_hours_per_week = Gamma(shape=4.0, rate=0.8, min=0.0, max=40.0).sample(100)
@@ -22,13 +22,8 @@ def _build_x() -> np.ndarray:
 
     school_private = (school_type == "private").astype(float)
     school_charter = (school_type == "charter").astype(float)
-    return np.column_stack(
-        [study_hours_per_week, attendance_rate, prior_gpa, school_private, school_charter]
-    )
+    X = np.column_stack([study_hours_per_week, attendance_rate, prior_gpa, school_private, school_charter])
 
-
-def test_lognormal_regressor_calibrates_and_samples():
-    X = _build_x()
     response = LogNormal(log_mean=4.0, log_standard_deviation=0.18, min=1.0, max=100.0)
     regressor = LogNormalRegressor(
         target_mean=response.target_mean(),

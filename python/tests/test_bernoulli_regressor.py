@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, Bernoulli, Gamma, LogNormal, Poiss
 from regressors import BernoulliRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_bernoulli_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     ad_exposure_count = Poisson(rate=8.0, min=0, max=40).sample(100)
@@ -23,13 +23,8 @@ def _build_x() -> np.ndarray:
     occasional = (customer_segment == "occasional").astype(float)
     loyal = (customer_segment == "loyal").astype(float)
     high_value = (customer_segment == "high_value").astype(float)
-    return np.column_stack(
-        [ad_exposure_count, days_since_last_purchase, average_order_value, occasional, loyal, high_value]
-    )
+    X = np.column_stack([ad_exposure_count, days_since_last_purchase, average_order_value, occasional, loyal, high_value])
 
-
-def test_bernoulli_regressor_calibrates_and_samples():
-    X = _build_x()
     response = Bernoulli(success_prob=0.08)
     regressor = BernoulliRegressor(
         target_mean=response.target_mean(),

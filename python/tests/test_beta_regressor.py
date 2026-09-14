@@ -9,7 +9,7 @@ from distributions import Beta, CategoricalNominal, DiscreteUniform, LogNormal
 from regressors import BetaRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_beta_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     annual_income = LogNormal(log_mean=10.8, log_standard_deviation=0.45, min=20000.0, max=500000.0).sample(100)
@@ -24,13 +24,8 @@ def _build_x() -> np.ndarray:
     unemployed = (employment_status == "unemployed").astype(float)
     retired = (employment_status == "retired").astype(float)
     student = (employment_status == "student").astype(float)
-    return np.column_stack(
-        [annual_income, debt_to_income_ratio, credit_score, self_employed, unemployed, retired, student]
-    )
+    X = np.column_stack([annual_income, debt_to_income_ratio, credit_score, self_employed, unemployed, retired, student])
 
-
-def test_beta_regressor_calibrates_and_samples():
-    X = _build_x()
     response = Beta(shape_1=2.2, shape_2=5.8, min=0.0, max=100.0)
     regressor = BetaRegressor(
         target_mean=response.target_mean(),

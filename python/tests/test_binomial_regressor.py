@@ -9,7 +9,7 @@ from distributions import Binomial, CategoricalNominal, Normal
 from regressors import BinomialRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_binomial_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     test_anxiety_score = Normal(mean=45.0, standard_deviation=10.0, min=15.0, max=75.0).sample(100)
@@ -21,11 +21,8 @@ def _build_x() -> np.ndarray:
     ).sample(100)
 
     mindfulness = (intervention_group == "mindfulness").astype(float)
-    return np.column_stack([test_anxiety_score, working_memory_capacity, sleep_duration_hours, mindfulness])
+    X = np.column_stack([test_anxiety_score, working_memory_capacity, sleep_duration_hours, mindfulness])
 
-
-def test_binomial_regressor_calibrates_and_samples():
-    X = _build_x()
     response = Binomial(n_trials=20, success_prob=0.6, min=1, max=18)
     regressor = BinomialRegressor(
         target_mean=response.target_mean(),

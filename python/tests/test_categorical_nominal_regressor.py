@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, LogNormal, Normal
 from regressors import CategoricalNominalRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_categorical_nominal_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     age_years = Normal(mean=52.0, standard_deviation=18.0, min=18.0, max=95.0).sample(100)
@@ -23,11 +23,8 @@ def _build_x() -> np.ndarray:
     medicare = (insurance_type == "medicare").astype(float)
     medicaid = (insurance_type == "medicaid").astype(float)
     uninsured = (insurance_type == "uninsured").astype(float)
-    return np.column_stack([age_years, systolic_blood_pressure, bmi, medicare, medicaid, uninsured])
+    X = np.column_stack([age_years, systolic_blood_pressure, bmi, medicare, medicaid, uninsured])
 
-
-def test_categorical_nominal_regressor_calibrates_and_samples():
-    X = _build_x()
     target_probabilities = np.array([0.55, 0.25, 0.14, 0.06], dtype=float)
     regressor = CategoricalNominalRegressor(
         target_probabilities=target_probabilities,

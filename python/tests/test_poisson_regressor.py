@@ -9,7 +9,7 @@ from distributions import CategoricalNominal, Gamma, LogNormal, Poisson
 from regressors import PoissonRegressor
 
 
-def _build_x() -> np.ndarray:
+def test_poisson_regressor_calibrates_and_samples():
     np.random.seed(0)
 
     codebase_size_kloc = LogNormal(log_mean=4.0, log_standard_deviation=0.6, min=10.0, max=2000.0).sample(100)
@@ -22,13 +22,8 @@ def _build_x() -> np.ndarray:
 
     hybrid = (team_distribution_model == "hybrid").astype(float)
     remote = (team_distribution_model == "remote").astype(float)
-    return np.column_stack(
-        [codebase_size_kloc, deployment_frequency_per_week, mean_build_time_minutes, hybrid, remote]
-    )
+    X = np.column_stack([codebase_size_kloc, deployment_frequency_per_week, mean_build_time_minutes, hybrid, remote])
 
-
-def test_poisson_regressor_calibrates_and_samples():
-    X = _build_x()
     response = Poisson(rate=12.0, min=0, max=60)
     regressor = PoissonRegressor(
         target_mean=response.target_mean(),
