@@ -8,7 +8,7 @@ Variables may either be quantitative or categorical, each with their own schema.
     "description": "str, short description of variable",
     "justification": "str, reason for including the variable",
     "effect_type": "str, Fixed or Random",
-    "measurement_level": "str, Interval or Nominal",
+    "measurement_level": "str, Interval or Ratio",
     "classification": "str, Discrete or Continuous",
     "skew": "str, Left, Right, or None"
   },

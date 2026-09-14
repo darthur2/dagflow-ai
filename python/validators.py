@@ -61,7 +61,7 @@ DAG_EDGE_REQUIRED_FIELDS = {"parent", "child"}
 DAG_EDGE_ALLOWED_FIELDS = DAG_EDGE_REQUIRED_FIELDS
 
 ALLOWED_EFFECT_TYPES = {"Fixed", "Random"}
-ALLOWED_QUANTITATIVE_MEASUREMENT_LEVELS = {"Interval", "Nominal"}
+ALLOWED_QUANTITATIVE_MEASUREMENT_LEVELS = {"Interval", "Ratio"}
 ALLOWED_CATEGORICAL_MEASUREMENT_LEVELS = {"Nominal", "Ordinal"}
 ALLOWED_CLASSIFICATIONS = {"Discrete", "Continuous"}
 ALLOWED_SKEWS = {"Left", "Right", "None"}
@@ -1104,9 +1104,15 @@ def validate_formulas_data(formulas_data: dict[str, Any], variables_data: dict[s
         assert isinstance(formula_data, dict)
         formula_type = normalize_formula_type(formula_data)
         variable_info = variables_data.get(variable_name, {})
-        variable_schema_type = "quantitative" if variable_info.get("measurement_level") in ALLOWED_QUANTITATIVE_MEASUREMENT_LEVELS else "categorical nominal"
-        if variable_info.get("measurement_level") == "Ordinal":
+        measurement_level = variable_info.get("measurement_level")
+        if measurement_level in ALLOWED_QUANTITATIVE_MEASUREMENT_LEVELS:
+            variable_schema_type = "quantitative"
+        elif measurement_level == "Nominal":
+            variable_schema_type = "categorical nominal"
+        elif measurement_level == "Ordinal":
             variable_schema_type = "categorical ordinal"
+        else:
+            variable_schema_type = "categorical nominal"
 
         if formula_type != variable_schema_type:
             errors.append(ValidationError(code="FORMULA_TYPE_MISMATCH", message="Formula type does not match the variable definition.", path=variable_name, details={"variable_type": variable_schema_type, "formula_type": formula_type}))
