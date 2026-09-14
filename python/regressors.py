@@ -1094,7 +1094,6 @@ class PoissonRegressor:
 @dataclass(frozen=True)
 class GeometricRegressor:
     target_mean: float
-    target_snr: float
     X: np.ndarray
     beta_1_init: np.ndarray
     predictor_names: list[str] | None = None
@@ -1102,7 +1101,6 @@ class GeometricRegressor:
     min: int = 0
     max: int = 20
     beta_0: float | None = None
-    c: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
@@ -1116,89 +1114,84 @@ class GeometricRegressor:
             raise ValueError("min must be >= 0")
         if self.target_mean <= 0:
             raise ValueError("target_mean must be positive")
-        if self.target_snr <= 0:
-            raise ValueError("target_snr must be positive")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1_init", beta_1_init)
         object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
-        return beta_0 + self.X @ (c * self.beta_1_init)
+    def _linear_predictor(self, beta_0: float) -> np.ndarray:
+        return beta_0 + self.X @ self.beta_1_init
 
-    def _probability(self, beta_0: float, c: float) -> np.ndarray:
-        eta = self._linear_predictor(beta_0, c)
+    def _probability(self, beta_0: float) -> np.ndarray:
+        eta = self._linear_predictor(beta_0)
         return 1.0 / (1.0 + np.exp(-eta))
 
-    def target_mean_value(self, beta_0: float, c: float) -> float:
-        probs = self._probability(beta_0, c)
-        means = np.empty(len(probs), dtype=float)
-        for idx, current_p in enumerate(probs):
-            means[idx] = Geometric(float(current_p), self.min, self.max).target_mean()
-        return float(means.mean())
+    def _row_moments(self, beta_0: float) -> tuple[np.ndarray, np.ndarray]:
+        probs = self._probability(beta_0)
+        support = np.arange(self.min, self.max + 1, dtype=float)[None, :]
+        prob_matrix = probs[:, None]
+        pmf = stats.nbinom.pmf(support, 1, prob_matrix)
+        pmf_sum = np.sum(pmf, axis=1, keepdims=True)
+        lower = stats.nbinom.cdf(self.min - 1, 1, probs)
+        upper = stats.nbinom.cdf(self.max, 1, probs)
+        if np.any(lower >= upper) or np.any(pmf_sum <= 0):
+            raise ValueError("truncation interval has zero probability mass")
 
-    def target_snr_value(self, beta_0: float, c: float) -> float:
-        probs = self._probability(beta_0, c)
-        cond_mean = np.empty(len(probs), dtype=float)
-        cond_var = np.empty(len(probs), dtype=float)
-        for idx, current_p in enumerate(probs):
-            dist = stats.nbinom(1, float(current_p))
-            lower = dist.cdf(self.min - 1)
-            upper = dist.cdf(self.max)
-            if lower >= upper:
-                raise ValueError("truncation interval has zero probability mass")
-            pmf = dist.pmf(np.arange(self.min, self.max + 1, dtype=float))
-            pmf = pmf / float(np.sum(pmf))
-            support = np.arange(self.min, self.max + 1, dtype=float)
-            current_mean = float(np.sum(support * pmf))
-            current_second = float(np.sum((support**2) * pmf))
-            cond_mean[idx] = current_mean
-            cond_var[idx] = current_second - current_mean**2
-        within = float(cond_var.mean())
-        if within <= 0:
-            raise ValueError("Conditional variance is non-positive")
-        return float(cond_mean.var() / within)
+        pmf = pmf / pmf_sum
+        cond_mean = np.sum(support * pmf, axis=1)
+        cond_second = np.sum((support**2) * pmf, axis=1)
+        cond_var = cond_second - cond_mean**2
+        return cond_mean, cond_var
 
-    def _feasible_initial_guess(self) -> tuple[float, float]:
+    def target_mean_value(self, beta_0: float) -> float:
+        cond_mean, _ = self._row_moments(beta_0)
+        return float(cond_mean.mean())
+
+    def _feasible_initial_guess(self) -> float:
         p = np.clip(1.0 / (1.0 + self.target_mean), 1e-4, 1.0 - 1e-4)
         x_mean = np.mean(self.X @ self.beta_1_init)
-        beta_0 = np.log(p / (1.0 - p)) - x_mean
-        c = 1.0
-        return beta_0, c
+        return float(np.log(p / (1.0 - p)) - x_mean)
 
     def calibrate(self) -> "GeometricRegressor":
-        if self.beta_0 is not None and self.c is not None:
+        if self.beta_0 is not None:
             return self
 
-        initial_beta_0, initial_c = self._feasible_initial_guess()
+        initial_beta_0 = self._feasible_initial_guess()
 
         def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, c = params
+            beta_0 = float(params[0])
             try:
-                mean_residual = self.target_mean_value(beta_0, c) - self.target_mean
-                snr_residual = self.target_snr_value(beta_0, c) - self.target_snr
-                return np.array([mean_residual, snr_residual], dtype=float)
+                mean_residual = self.target_mean_value(beta_0) - self.target_mean
+                return np.array([mean_residual], dtype=float)
             except ValueError:
-                return np.array([1e6, 1e6], dtype=float)
+                return np.array([1e6], dtype=float)
 
         result = optimize.least_squares(
             residuals,
-            x0=np.array([initial_beta_0, initial_c], dtype=float),
-            bounds=([-np.inf, 0.0], [np.inf, np.inf]),
+            x0=np.array([initial_beta_0], dtype=float),
+            bounds=([-np.inf], [np.inf]),
         )
 
         if not result.success:
             raise ValueError(f"Unable to calibrate GeometricRegressor: {result.message}")
 
-        beta_0, c = result.x
-        return replace(self, beta_0=float(beta_0), c=float(c))
+        return GeometricRegressor(
+            target_mean=self.target_mean,
+            X=self.X,
+            beta_1_init=self.beta_1_init,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            min=self.min,
+            max=self.max,
+            beta_0=float(result.x[0]),
+        )
 
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.c is None:
+        if self.beta_0 is None:
             raise ValueError("GeometricRegressor must be calibrated before sampling")
 
-        p = np.repeat(self._probability(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        p = np.repeat(self._probability(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
         samples = np.empty(n, dtype=float)
         rng = np.random.default_rng()
         for idx, current_p in enumerate(p):
