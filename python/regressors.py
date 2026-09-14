@@ -729,8 +729,8 @@ class UniformRegressor:
             raise ValueError("UniformRegressor must be calibrated before sampling")
 
         latent_samples = self.latent_regressor.sample(n)
-        uniforms = stats.norm.cdf(latent_samples)
-        return _as_1d_array(self.min + (self.max - self.min) * uniforms)
+        ranks = stats.norm.cdf(latent_samples)
+        return _as_1d_array(self.min + (self.max - self.min) * ranks)
 
 
 @dataclass(frozen=True)
@@ -780,8 +780,13 @@ class DiscreteUniformRegressor:
             raise ValueError("DiscreteUniformRegressor must be calibrated before sampling")
 
         samples = self.latent_regressor.sample(n)
-        rounded = np.rint(samples).astype(int)
-        return _as_1d_array(np.clip(rounded, self.min, self.max))
+        support = np.arange(self.min, self.max + 1, dtype=int)
+        if support.size == 0:
+            raise ValueError("DiscreteUniformRegressor support must not be empty")
+
+        ranks = stats.norm.cdf(samples)
+        indices = np.minimum((ranks * support.size).astype(int), support.size - 1)
+        return _as_1d_array(support[indices])
 
 
 @dataclass(frozen=True)

@@ -5,7 +5,7 @@ import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from distributions import CategoricalNominal, LogNormal, Normal
+from distributions import Beta, CategoricalNominal, Gamma, LogNormal, Normal
 from regressors import NormalRegressor
 
 
@@ -78,6 +78,52 @@ def test_normal_regressor_calibrates_latent_uniform_wrapper_scenario():
             "shift_type",
         ],
         predictor_transformations={"average_handle_time_minutes": "log", "queue_length": "sqrt"},
+    )
+
+    calibrated = regressor.calibrate()
+    samples = calibrated.sample(2000)
+    cond_mean, cond_var = calibrated._conditional_moments(calibrated.beta_0, calibrated.c, calibrated.sigma2)
+    estimated_snr = float(cond_mean.var() / cond_var.mean())
+
+    print(f"beta_0: {calibrated.beta_0}")
+    print(f"c: {calibrated.c}")
+    print(f"sigma2: {calibrated.sigma2}")
+    print(f"mean: target={regressor.target_mean} sample={float(np.mean(samples))}")
+    print(f"variance: target={regressor.target_variance} sample={float(np.var(samples))}")
+    print(f"snr: target={regressor.target_snr} sample={estimated_snr}")
+
+
+def test_normal_regressor_calibrates_latent_discrete_uniform_wrapper_scenario():
+    np.random.seed(0)
+
+    study_hours_per_week = Gamma(shape=4.0, rate=0.5, min=0.0, max=40.0).sample(100)
+    attendance_rate = Beta(shape_1=8.0, shape_2=2.5, min=0.0, max=100.0).sample(100)
+    previous_gpa = Beta(shape_1=5.0, shape_2=2.0, min=0.0, max=4.0).sample(100)
+    instructional_setting = CategoricalNominal(
+        categories=["in-person", "hybrid", "online"],
+        probabilities=[0.5, 0.25, 0.25],
+    ).sample(100)
+
+    hybrid = (instructional_setting == "hybrid").astype(float)
+    online = (instructional_setting == "online").astype(float)
+    X = np.column_stack([study_hours_per_week, attendance_rate, previous_gpa, hybrid, online])
+
+    regressor = NormalRegressor(
+        target_mean=0.0,
+        target_variance=1.0,
+        target_snr=0.55,
+        min=-10.0,
+        max=10.0,
+        X=X,
+        beta_1_init=np.array([0.25, 0.05, 0.45, 0.15, 0.35], dtype=float),
+        predictor_names=[
+            "study_hours_per_week",
+            "attendance_rate",
+            "previous_gpa",
+            "instructional_setting",
+            "instructional_setting",
+        ],
+        predictor_transformations={"study_hours_per_week": "log", "previous_gpa": "sqrt"},
     )
 
     calibrated = regressor.calibrate()
