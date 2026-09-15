@@ -44,13 +44,19 @@
           "*": "deny",
           "synthdata": "allow",
           "synthdata/": "allow",
-          "synthdata/*": "allow"
+          "synthdata/*": "allow",
+          "python/scripts": "allow",
+          "python/scripts/": "allow",
+          "python/scripts/*": "allow"
         },
         "glob": {
           "*": "deny",
           "synthdata": "allow",
           "synthdata/": "allow",
-          "synthdata/*": "allow"
+          "synthdata/*": "allow",
+          "python/scripts": "allow",
+          "python/scripts/": "allow",
+          "python/scripts/*": "allow"
         },
         "grep": "deny",
         "list": "allow",
@@ -58,7 +64,8 @@
         "edit": "deny",
         "bash": {
           "*": "deny",
-          "python python/validators.py": "allow"
+          "python python/scripts/validators.py": "allow",
+          "python python/scripts/data_generator.py": "allow"
         },
         "external_directory": "deny",
         "todowrite": "allow",

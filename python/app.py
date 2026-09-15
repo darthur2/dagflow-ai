@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import altair as alt
@@ -6,6 +5,8 @@ import numpy as np
 import streamlit as st
 from streamlit_agraph import Config, Edge, Node, agraph
 from scipy import stats
+
+from utils import load_json
 
 
 st.set_page_config(page_title="DagFlow-AI", layout="wide")
@@ -28,14 +29,15 @@ dag_path = Path(__file__).resolve().parent.parent / "synthdata" / "dag.json"
 distributions_path = Path(__file__).resolve().parent.parent / "synthdata" / "distributions.json"
 
 formulas_path = Path(__file__).resolve().parent.parent / "synthdata" / "formulas.json"
-
-
-def load_json(path: Path):
-    if not path.exists():
+data_path = Path(__file__).resolve().parent.parent / "synthdata" / "generated_data.csv"
+@st.cache_data
+def load_csv(path: str, modified_at: float | None = None):
+    csv_path = Path(path)
+    if not csv_path.exists():
         return None
+    import pandas as pd
 
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    return pd.read_csv(csv_path)
 
 
 def prettify_text(value: str) -> str:
@@ -45,6 +47,195 @@ def prettify_text(value: str) -> str:
     pretty = value.replace("_", " ").replace("(", " ( ").replace(")", " ) ")
     pretty = " ".join(part for part in pretty.split() if part)
     return pretty.title()
+
+
+def infer_column_order(df) -> list[str]:
+    return list(df.columns)
+
+
+def infer_numeric_columns(df, variables_data: dict | None = None) -> set[str]:
+    numeric_columns = set(df.select_dtypes(include=[np.number]).columns)
+    if not variables_data:
+        return numeric_columns
+
+    for column_name, metadata in variables_data.items():
+        if metadata.get("measurement_level") == "Nominal" or metadata.get("measurement_level") == "Ordinal":
+            numeric_columns.discard(column_name)
+    return numeric_columns
+
+
+def is_discrete_numeric_column(column_name: str, variables_data: dict | None = None) -> bool:
+    if not variables_data or column_name not in variables_data:
+        return False
+    metadata = variables_data[column_name]
+    return metadata.get("classification") == "Discrete"
+
+
+def is_categorical_column(column_name: str, df, numeric_columns: set[str], variables_data: dict | None = None) -> bool:
+    if variables_data and column_name in variables_data:
+        measurement_level = variables_data[column_name].get("measurement_level")
+        if measurement_level in {"Nominal", "Ordinal"}:
+            return True
+        if measurement_level == "Ratio" and variables_data[column_name].get("classification") in {"Discrete"}:
+            return False
+
+    return column_name not in numeric_columns
+
+
+def get_domain_order(column_name: str, df, variables_data: dict | None = None, distributions_data: dict | None = None) -> list[str]:
+    if distributions_data and column_name in distributions_data:
+        categories = distributions_data[column_name].get("categories")
+        if isinstance(categories, list) and categories:
+            return [str(category) for category in categories]
+
+    if variables_data and column_name in variables_data:
+        metadata = variables_data[column_name]
+        if metadata.get("measurement_level") in {"Nominal", "Ordinal"}:
+            return list(dict.fromkeys(df[column_name].astype(str).tolist()))
+
+    return list(dict.fromkeys(df[column_name].astype(str).tolist()))
+
+
+def dataframe_value_counts(df, column_name: str, order: list[str]) -> list[dict]:
+    counts = df[column_name].astype(str).value_counts()
+    return [{"category": category, "count": int(counts.get(category, 0))} for category in order]
+
+
+def build_univariate_chart(df, column_name: str, is_categorical: bool, is_discrete: bool, order: list[str] | None = None):
+    if is_categorical:
+        values = dataframe_value_counts(df, column_name, order or get_domain_order(column_name, df))
+        return (
+            alt.Chart(alt.Data(values=values))
+            .mark_bar(color="#2E86DE")
+            .encode(
+                x=alt.X("category:N", title=prettify_text(column_name), sort=order or None),
+                y=alt.Y("count:Q", title="Count"),
+                tooltip=[alt.Tooltip("category:N", title="Category"), alt.Tooltip("count:Q", title="Count")],
+            )
+            .properties(height=360, title=prettify_text(column_name))
+        )
+
+    if is_discrete:
+        values = dataframe_value_counts(df, column_name, order or get_domain_order(column_name, df))
+        return (
+            alt.Chart(alt.Data(values=values))
+            .mark_bar(color="#2E86DE")
+            .encode(
+                x=alt.X("category:N", title=prettify_text(column_name), sort=order or None),
+                y=alt.Y("count:Q", title="Count"),
+                tooltip=[alt.Tooltip("category:N", title="Value"), alt.Tooltip("count:Q", title="Count")],
+            )
+            .properties(height=360, title=prettify_text(column_name))
+        )
+
+    values = df[column_name].dropna().astype(float)
+    if values.empty:
+        return None
+
+    counts, bin_edges = np.histogram(values.to_numpy(), bins=30)
+    histogram_data = [
+        {
+            "bin_start": float(bin_edges[idx]),
+            "bin_end": float(bin_edges[idx + 1]),
+            "bin_label": f"{bin_edges[idx]:.0f} - {bin_edges[idx + 1]:.0f}",
+            "count": int(counts[idx]),
+        }
+        for idx in range(len(counts))
+        if counts[idx] > 0
+    ]
+
+    return (
+        alt.Chart(alt.Data(values=histogram_data))
+        .mark_bar(color="#2E86DE")
+        .encode(
+            x=alt.X("bin_label:N", title=prettify_text(column_name), sort=None),
+            y=alt.Y("count:Q", title="Count"),
+            tooltip=[
+                alt.Tooltip("bin_start:Q", title="Bin Start"),
+                alt.Tooltip("bin_end:Q", title="Bin End"),
+                alt.Tooltip("count:Q", title="Count"),
+            ],
+        )
+        .properties(height=360, title=prettify_text(column_name))
+    )
+
+
+def build_bivariate_chart(df, x_name: str, y_name: str, x_is_categorical: bool, y_is_categorical: bool, variables_data: dict | None = None, distributions_data: dict | None = None):
+    if not x_is_categorical and not y_is_categorical:
+        return (
+            alt.Chart(df)
+            .mark_circle(color="#2E86DE", opacity=0.65, size=55)
+            .encode(
+                x=alt.X(f"{x_name}:Q", title=prettify_text(x_name)),
+                y=alt.Y(f"{y_name}:Q", title=prettify_text(y_name)),
+                tooltip=[alt.Tooltip(f"{x_name}:Q", title=prettify_text(x_name)), alt.Tooltip(f"{y_name}:Q", title=prettify_text(y_name))],
+            )
+            .properties(height=360, title=f"{prettify_text(x_name)} vs {prettify_text(y_name)}")
+        )
+
+    if x_is_categorical and y_is_categorical:
+        x_order = get_domain_order(x_name, df, variables_data, distributions_data)
+        y_order = get_domain_order(y_name, df, variables_data, distributions_data)
+        chart_data = df.copy()
+        chart_data[x_name] = chart_data[x_name].astype(str)
+        chart_data[y_name] = chart_data[y_name].astype(str)
+        return (
+            alt.Chart(chart_data)
+            .mark_bar()
+            .encode(
+                x=alt.X(f"{x_name}:N", title=prettify_text(x_name), sort=x_order),
+                xOffset=alt.XOffset(f"{y_name}:N", sort=y_order),
+                y=alt.Y("count():Q", title="Count"),
+                color=alt.Color(f"{y_name}:N", title=prettify_text(y_name), sort=y_order),
+                tooltip=[alt.Tooltip(f"{x_name}:N", title=prettify_text(x_name)), alt.Tooltip(f"{y_name}:N", title=prettify_text(y_name)), alt.Tooltip("count():Q", title="Count")],
+            )
+            .properties(height=360, title=f"{prettify_text(x_name)} by {prettify_text(y_name)}")
+        )
+
+    categorical_name = x_name if x_is_categorical else y_name
+    quantitative_name = y_name if x_is_categorical else x_name
+    category_order = get_domain_order(categorical_name, df, variables_data, distributions_data)
+    chart_data = df.copy()
+    chart_data[categorical_name] = chart_data[categorical_name].astype(str)
+    return (
+        alt.Chart(chart_data)
+        .mark_boxplot(color="#2E86DE")
+        .encode(
+            x=alt.X(f"{categorical_name}:N", title=prettify_text(categorical_name), sort=category_order),
+            y=alt.Y(f"{quantitative_name}:Q", title=prettify_text(quantitative_name)),
+            tooltip=[alt.Tooltip(f"{categorical_name}:N", title=prettify_text(categorical_name)), alt.Tooltip(f"{quantitative_name}:Q", title=prettify_text(quantitative_name))],
+        )
+        .properties(height=360, title=f"{prettify_text(quantitative_name)} by {prettify_text(categorical_name)}")
+    )
+
+
+def render_data_tab(df, variables_data: dict | None = None, distributions_data: dict | None = None) -> None:
+    data_tabs = st.tabs(["Univariate", "Bivariate"])
+    numeric_columns = infer_numeric_columns(df, variables_data)
+    column_order = infer_column_order(df)
+
+    with data_tabs[0]:
+        st.subheader("Univariate")
+        selected_column = st.selectbox("Select a variable", column_order, key="data_univariate_select")
+        categorical = is_categorical_column(selected_column, df, numeric_columns, variables_data)
+        discrete = is_discrete_numeric_column(selected_column, variables_data)
+        order = get_domain_order(selected_column, df, variables_data, distributions_data) if categorical else None
+        st.altair_chart(build_univariate_chart(df, selected_column, categorical, discrete, order), use_container_width=True)
+
+    with data_tabs[1]:
+        st.subheader("Bivariate")
+        left_col, right_col = st.columns(2)
+        with left_col:
+            x_column = st.selectbox("Select x variable", column_order, key="data_bivariate_x")
+        with right_col:
+            y_column = st.selectbox("Select y variable", column_order, key="data_bivariate_y")
+
+        x_categorical = is_categorical_column(x_column, df, numeric_columns, variables_data)
+        y_categorical = is_categorical_column(y_column, df, numeric_columns, variables_data)
+        st.altair_chart(
+            build_bivariate_chart(df, x_column, y_column, x_categorical, y_categorical, variables_data, distributions_data),
+            use_container_width=True,
+        )
 
 st.title("DagFlow")
 
@@ -668,4 +859,11 @@ with tabs[3]:
 
 with tabs[4]:
     st.header("Data")
-    st.write("Data tab coming soon.")
+    data_mtime = data_path.stat().st_mtime if data_path.exists() else None
+    data_df = load_csv(str(data_path), data_mtime)
+    variables_data = load_json(variables_path) or {}
+    distributions_data = load_json(distributions_path) or {}
+    if data_df is None:
+        st.info("Generated data has not been created yet.")
+    else:
+        render_data_tab(data_df, variables_data, distributions_data)

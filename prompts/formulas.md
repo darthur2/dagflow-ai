@@ -101,7 +101,9 @@ The following is a minimal example of a formula list, including the schema for a
 }
 ```
 
-Use transformations for predictors only when the situation would realistically warrant it and make sure the corresponding coefficient is selected after accounting for this transformation.
+ONLY use transformations for predictors when you are specifically instructed to do so.
+
+Think very carefully about magnitudes of coefficients for predictors. Choose values for coefficients that are realistic, but that will result in values of linear predictors that explode or saturate once link functions for GLMs are applied. Choose values of coefficients that make sense after accounting for the type of GLM as well as the scale of the predictor. If transformations are applied, think about the scale of the predictor after the transformation is applied. Try to choose coefficients that are large enough to provide a realistic signal and won't get washed out, but that do not result in linear predictors that explode or saturate.
 
 When selecting values for signal-to-noise (SNR) ratios, keep the following in mind:
 

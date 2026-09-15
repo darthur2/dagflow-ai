@@ -1613,7 +1613,7 @@ def validate_all_report_json(variables_path: str | Path, dag_path: str | Path) -
 
 
 if __name__ == "__main__":
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = Path(__file__).resolve().parents[2]
     variables_path = repo_root / "synthdata" / "variables.json"
     dag_path = repo_root / "synthdata" / "dag.json"
 
