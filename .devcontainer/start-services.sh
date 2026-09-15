@@ -51,7 +51,7 @@ if ! ensure_opencode_available; then
 fi
 
 if ! is_listening "$OPENCODE_PORT"; then
-  start_background_service "opencode web" "$OPENCODE_LOG" opencode web --host 127.0.0.1 --port "$OPENCODE_PORT"
+  start_background_service "opencode web" "$OPENCODE_LOG" opencode serve --hostname 127.0.0.1 --port "$OPENCODE_PORT"
 fi
 
 if ! is_listening "$STREAMLIT_PORT"; then
