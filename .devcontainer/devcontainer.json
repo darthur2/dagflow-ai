@@ -1,0 +1,27 @@
+{
+  "name": "DagFlow-AI",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"]
+    }
+  },
+  "postCreateCommand": "npm install -g opencode && bash .devcontainer/start-services.sh",
+  "postStartCommand": "bash .devcontainer/start-services.sh",
+  "forwardPorts": [4096, 8501],
+  "portsAttributes": {
+    "4096": {
+      "label": "opencode web",
+      "onAutoForward": "openBrowser"
+    },
+    "8501": {
+      "label": "streamlit app",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}

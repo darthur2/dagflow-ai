@@ -1,0 +1,7 @@
+altair==6.2.2
+numpy==2.4.1
+pandas==3.0.5
+scipy==1.16.2
+streamlit==1.63.0
+streamlit-agraph==0.0.45
+pytest==9.0.3
