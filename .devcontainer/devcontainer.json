@@ -15,6 +15,17 @@
     "OPENCODE_PORT": "4096",
     "STREAMLIT_PORT": "8501"
   },
+  "secrets": {
+    "SSEC_LITELLM_API_KEY": {
+      "description": "API key for ssec-litellm models."
+    },
+    "OPENAI_API_KEY": {
+      "description": "API key for OpenAI models (optional)."
+    },
+    "ANTHROPIC_API_KEY": {
+      "description": "API key for Anthropic models (optional)."
+    }
+  },
   "postCreateCommand": "python -m pip install -r requirements.txt && npm install -g opencode-ai",
   "postStartCommand": "bash .devcontainer/start-services.sh",
   "forwardPorts": [4096, 8501],
