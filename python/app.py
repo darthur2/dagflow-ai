@@ -239,7 +239,12 @@ def render_data_tab(df, variables_data: dict | None = None, distributions_data: 
 
 st.title("DagFlow")
 
-tabs = st.tabs(["Variables", "DAG", "Distributions", "Formulas", "Data"])
+chat_url = "http://127.0.0.1:4096"
+
+tabs = st.tabs(["Chat", "Variables", "DAG", "Distributions", "Formulas", "Data"])
+
+with tabs[0]:
+    st.components.v1.iframe(chat_url, height=900, scrolling=True)
 
 
 def render_details(selected_name: str, data: dict) -> None:
@@ -822,7 +827,7 @@ def render_dag(dag_data: dict) -> None:
 
     agraph(nodes=nodes, edges=edges, config=config)
 
-with tabs[0]:
+with tabs[1]:
     st.header("Variables")
     variables_data = load_json(variables_path)
     if variables_data is None:
@@ -830,7 +835,7 @@ with tabs[0]:
     else:
         render_variable_tab(variables_data)
 
-with tabs[1]:
+with tabs[2]:
     st.header("DAG")
     dag_data = load_json(dag_path)
     if dag_data is None:
@@ -838,7 +843,7 @@ with tabs[1]:
     else:
         render_dag(dag_data)
 
-with tabs[2]:
+with tabs[3]:
     st.header("Distributions")
     distributions_data = load_json(distributions_path)
     if distributions_data is None:
@@ -848,7 +853,7 @@ with tabs[2]:
         distribution_name = render_distribution_selector(distributions)
         render_distribution_details(distribution_name, distributions)
 
-with tabs[3]:
+with tabs[4]:
     st.header("Formulas")
     formulas_data = load_json(formulas_path)
     distributions_data = load_json(distributions_path) or {}
@@ -857,7 +862,7 @@ with tabs[3]:
     else:
         render_formulas_tab(formulas_data, distributions_data)
 
-with tabs[4]:
+with tabs[5]:
     st.header("Data")
     data_mtime = data_path.stat().st_mtime if data_path.exists() else None
     data_df = load_csv(str(data_path), data_mtime)
