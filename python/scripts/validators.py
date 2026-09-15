@@ -692,8 +692,12 @@ def validate_distributions(distributions: dict[str, Any], variables: dict[str, d
         elif variable_schema_type == "quantitative":
             classification = variable_data.get("classification")
             allowed_distributions = ALLOWED_DISTRIBUTIONS_BY_VARIABLE_SCHEMA["quantitative"].get(classification, set())
+        elif variable_schema_type == "categorical nominal":
+            allowed_distributions = {"Categorical Nominal"}
+        elif variable_schema_type == "categorical ordinal":
+            allowed_distributions = {"Categorical Ordinal"}
         else:
-            allowed_distributions = ALLOWED_DISTRIBUTIONS_BY_VARIABLE_SCHEMA["categorical"]
+            allowed_distributions = set()
 
         if distribution not in allowed_distributions:
             errors.append(
@@ -1132,6 +1136,10 @@ def validate_formulas_data(formulas_data: dict[str, Any], variables_data: dict[s
         missing_parents = sorted(expected_parents - actual_predictors)
         if missing_parents:
             errors.append(ValidationError(code="FORMULA_MISSING_PARENTS", message="All DAG parents must appear in the formula predictors.", path=variable_name, details={"missing_parents": missing_parents}))
+
+        extra_predictors = sorted(actual_predictors - expected_parents)
+        if extra_predictors:
+            errors.append(ValidationError(code="FORMULA_EXTRA_PREDICTORS", message="Formula contains predictors that are not DAG parents.", path=variable_name, details={"extra_predictors": extra_predictors}))
 
     return errors
 
