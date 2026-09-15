@@ -216,7 +216,7 @@ def render_data_tab(df, variables_data: dict | None = None, distributions_data: 
             data=data_path.read_bytes(),
             file_name=data_path.name,
             mime="text/csv",
-            key="download_generated_data",
+            key="download_generated_data_button",
         )
     else:
         st.info("Generated data file is not available yet.")
@@ -247,16 +247,6 @@ def render_data_tab(df, variables_data: dict | None = None, distributions_data: 
             build_bivariate_chart(df, x_column, y_column, x_categorical, y_categorical, variables_data, distributions_data),
             use_container_width=True,
         )
-
-st.title("DagFlow")
-
-chat_url = "http://127.0.0.1:4096"
-
-tabs = st.tabs(["Chat", "Variables", "DAG", "Distributions", "Formulas", "Data"])
-
-with tabs[0]:
-    st.components.v1.iframe(chat_url, height=650, scrolling=True)
-
 
 def render_details(selected_name: str, data: dict) -> None:
     item = data[selected_name]
@@ -838,48 +828,69 @@ def render_dag(dag_data: dict) -> None:
 
     agraph(nodes=nodes, edges=edges, config=config)
 
-with tabs[1]:
-    st.header("Variables")
-    variables_data = load_json(variables_path)
-    if variables_data is None:
-        st.info("Variables have not been created yet.")
-    else:
-        render_variable_tab(variables_data)
 
-with tabs[2]:
-    st.header("DAG")
-    dag_data = load_json(dag_path)
-    if dag_data is None:
-        st.info("DAG has not been created yet.")
-    else:
-        render_dag(dag_data)
+def render_selected_section() -> None:
+    if "selected_section" not in st.session_state:
+        st.session_state.selected_section = "Chat"
 
-with tabs[3]:
-    st.header("Distributions")
-    distributions_data = load_json(distributions_path)
-    if distributions_data is None:
-        st.info("Distributions have not been created yet.")
-    else:
-        distributions = distributions_data
-        distribution_name = render_distribution_selector(distributions)
-        render_distribution_details(distribution_name, distributions)
+    section_names = ["Chat", "Variables", "DAG", "Distributions", "Formulas", "Data"]
+    left_nav, main_panel = st.columns([1, 5], gap="large")
 
-with tabs[4]:
-    st.header("Formulas")
-    formulas_data = load_json(formulas_path)
-    distributions_data = load_json(distributions_path) or {}
-    if formulas_data is None:
-        st.info("Formulas have not been created yet.")
-    else:
-        render_formulas_tab(formulas_data, distributions_data)
+    with left_nav:
+        st.subheader("Sections")
+        st.radio(
+            "Navigate sections",
+            section_names,
+            key="selected_section",
+            label_visibility="collapsed",
+        )
 
-with tabs[5]:
-    st.header("Data")
-    data_mtime = data_path.stat().st_mtime if data_path.exists() else None
-    data_df = load_csv(str(data_path), data_mtime)
-    variables_data = load_json(variables_path) or {}
-    distributions_data = load_json(distributions_path) or {}
-    if data_df is None:
-        st.info("Generated data has not been created yet.")
-    else:
-        render_data_tab(data_df, variables_data, distributions_data)
+    with main_panel:
+        if st.session_state.selected_section == "Chat":
+            st.components.v1.iframe(chat_url, height=600, scrolling=True)
+        elif st.session_state.selected_section == "Variables":
+            st.header("Variables")
+            variables_data = load_json(variables_path)
+            if variables_data is None:
+                st.info("Variables have not been created yet.")
+            else:
+                render_variable_tab(variables_data)
+        elif st.session_state.selected_section == "DAG":
+            st.header("DAG")
+            dag_data = load_json(dag_path)
+            if dag_data is None:
+                st.info("DAG has not been created yet.")
+            else:
+                render_dag(dag_data)
+        elif st.session_state.selected_section == "Distributions":
+            st.header("Distributions")
+            distributions_data = load_json(distributions_path)
+            if distributions_data is None:
+                st.info("Distributions have not been created yet.")
+            else:
+                distributions = distributions_data
+                distribution_name = render_distribution_selector(distributions)
+                render_distribution_details(distribution_name, distributions)
+        elif st.session_state.selected_section == "Formulas":
+            st.header("Formulas")
+            formulas_data = load_json(formulas_path)
+            distributions_data = load_json(distributions_path) or {}
+            if formulas_data is None:
+                st.info("Formulas have not been created yet.")
+            else:
+                render_formulas_tab(formulas_data, distributions_data)
+        elif st.session_state.selected_section == "Data":
+            st.header("Data")
+            data_mtime = data_path.stat().st_mtime if data_path.exists() else None
+            data_df = load_csv(str(data_path), data_mtime)
+            variables_data = load_json(variables_path) or {}
+            distributions_data = load_json(distributions_path) or {}
+            if data_df is None:
+                st.info("Generated data has not been created yet.")
+            else:
+                render_data_tab(data_df, variables_data, distributions_data)
+
+
+st.title("DagFlow")
+chat_url = "http://127.0.0.1:4096"
+render_selected_section()
