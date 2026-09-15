@@ -210,6 +210,17 @@ def build_bivariate_chart(df, x_name: str, y_name: str, x_is_categorical: bool, 
 
 
 def render_data_tab(df, variables_data: dict | None = None, distributions_data: dict | None = None) -> None:
+    if data_path.exists():
+        st.download_button(
+            "Download generated data",
+            data=data_path.read_bytes(),
+            file_name=data_path.name,
+            mime="text/csv",
+            key="download_generated_data",
+        )
+    else:
+        st.info("Generated data file is not available yet.")
+
     data_tabs = st.tabs(["Univariate", "Bivariate"])
     numeric_columns = infer_numeric_columns(df, variables_data)
     column_order = infer_column_order(df)
@@ -244,7 +255,7 @@ chat_url = "http://127.0.0.1:4096"
 tabs = st.tabs(["Chat", "Variables", "DAG", "Distributions", "Formulas", "Data"])
 
 with tabs[0]:
-    st.components.v1.iframe(chat_url, height=900, scrolling=True)
+    st.components.v1.iframe(chat_url, height=650, scrolling=True)
 
 
 def render_details(selected_name: str, data: dict) -> None:
