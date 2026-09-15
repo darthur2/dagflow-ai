@@ -37,11 +37,20 @@ def test_data_generator_house_prices():
     state["seller_motivation"] = seller_motivation
     state["year_built_decade"] = year_built_decade
 
+    year_built_decade_X = np.column_stack([
+        (year_built_decade == "1960s").astype(float),
+        (year_built_decade == "1970s").astype(float),
+        (year_built_decade == "1980s").astype(float),
+        (year_built_decade == "1990s").astype(float),
+        (year_built_decade == "2000s").astype(float),
+        (year_built_decade == "2010s").astype(float),
+    ])
+
     home_age = NoneRegressor(
-        X=year_built_decade.reshape(-1, 1),
-        beta_0=35.0,
+        X=year_built_decade_X,
+        beta_0=70,
         beta_1=np.array([-10.0, -20.0, -30.0, -40.0, -50.0, -60.0], dtype=float),
-        predictor_names=["year_built_decade"],
+        predictor_names=["year_built_decade"] * 6,
         response_type="quantitative",
     ).sample(n)
     state["home_age"] = home_age
@@ -172,6 +181,25 @@ def test_data_generator_house_prices():
     sqft_living = regressor.calibrate().sample(n)
     state["sqft_living"] = sqft_living
 
+    regressor = LogNormalRegressor(
+        target_mean=LogNormal(log_mean=8.8, log_standard_deviation=0.75, min=1500.0, max=50000.0).target_mean(),
+        target_variance=LogNormal(log_mean=8.8, log_standard_deviation=0.75, min=1500.0, max=50000.0).target_variance(),
+        min=1500.0,
+        max=50000.0,
+        X=np.column_stack([neighborhood_type_X[:, 1:4], municipality_X[:, 1:], np.column_stack([
+            (year_built_decade == "1960s").astype(float),
+            (year_built_decade == "1970s").astype(float),
+            (year_built_decade == "1980s").astype(float),
+            (year_built_decade == "1990s").astype(float),
+            (year_built_decade == "2000s").astype(float),
+            (year_built_decade == "2010s").astype(float),
+        ])]),
+        beta_1_init=np.array([0.12, -0.2, 0.08, 0.12, 0.22, -0.05, 0.18, -0.05, -0.08, -0.04, 0.03, 0.05, 0.06], dtype=float),
+        predictor_names=["neighborhood_type", "neighborhood_type", "neighborhood_type", "municipality", "municipality", "municipality", "municipality", "year_built_decade", "year_built_decade", "year_built_decade", "year_built_decade", "year_built_decade", "year_built_decade"],
+    )
+    lot_size_sqft = regressor.calibrate().sample(n)
+    state["lot_size_sqft"] = lot_size_sqft
+
     regressor = PoissonRegressor(target_mean=Poisson(rate=3.8, min=1, max=7).target_mean(), min=1, max=7, X=sqft_living.reshape(-1, 1), beta_1_init=np.array([0.28], dtype=float), predictor_names=["sqft_living"], predictor_transformations={"sqft_living": "log"})
     bedrooms = regressor.calibrate().sample(n)
     state["bedrooms"] = bedrooms
@@ -207,10 +235,10 @@ def test_data_generator_house_prices():
     recent_renovation = CategoricalNominalRegressor(target_probabilities=np.array([0.78, 0.22], dtype=float), X=np.column_stack([home_age.reshape(-1, 1), np.column_stack([(seller_motivation == "relocation").astype(float), (seller_motivation == "estate sale").astype(float), (seller_motivation == "downsizing").astype(float)])]), categories=["no", "yes"], beta_1=np.array([[0.12], [-0.2], [0.05], [-0.03]], dtype=float), predictor_names=["home_age", "seller_motivation", "seller_motivation", "seller_motivation"]).calibrate().sample(n)
     state["recent_renovation"] = recent_renovation
 
-    list_price = LogNormalRegressor(target_mean=LogNormal(log_mean=12.62, log_standard_deviation=0.34, min=85000.0, max=2600000.0).target_mean(), target_variance=LogNormal(log_mean=12.62, log_standard_deviation=0.34, min=85000.0, max=2600000.0).target_variance(), min=85000.0, max=2600000.0, X=np.column_stack([market_condition_X[:, 1:3], sale_season_X[:, 1:4], np.column_stack([(seller_motivation == "relocation").astype(float), (seller_motivation == "estate sale").astype(float), (seller_motivation == "downsizing").astype(float)])]), beta_1_init=np.array([0.04, 0.09, 0.02, 0.01, 0.0, -0.03, -0.08, -0.02], dtype=float), predictor_names=["market_condition", "market_condition", "sale_season", "sale_season", "sale_season", "seller_motivation", "seller_motivation", "seller_motivation"]).calibrate().sample(n)
+    list_price = LogNormalRegressor(target_mean=LogNormal(log_mean=12.62, log_standard_deviation=0.34, min=85000.0, max=2600000.0).target_mean(), target_variance=LogNormal(log_mean=12.62, log_standard_deviation=0.34, min=85000.0, max=2600000.0).target_variance(), min=85000.0, max=2600000.0, X=np.column_stack([market_condition_X[:, 1:3], sale_season_X[:, 1:4], np.column_stack([(seller_motivation == "relocation").astype(float), (seller_motivation == "estate sale").astype(float), (seller_motivation == "downsizing").astype(float)]), np.log(lot_size_sqft).reshape(-1, 1)]), beta_1_init=np.array([0.04, 0.09, 0.02, 0.01, 0.0, -0.03, -0.08, -0.02, 0.06], dtype=float), predictor_names=["market_condition", "market_condition", "sale_season", "sale_season", "sale_season", "seller_motivation", "seller_motivation", "seller_motivation", "lot_size_sqft"], predictor_transformations={"lot_size_sqft": "log"}).calibrate().sample(n)
     state["list_price"] = list_price
 
-    sale_price = LogNormalRegressor(target_mean=LogNormal(log_mean=12.6, log_standard_deviation=0.35, min=80000.0, max=2500000.0).target_mean(), target_variance=LogNormal(log_mean=12.6, log_standard_deviation=0.35, min=80000.0, max=2500000.0).target_variance(), min=80000.0, max=2500000.0, X=np.column_stack([list_price.reshape(-1, 1), balanced_market.reshape(-1, 1), sellers_market.reshape(-1, 1)]), beta_1_init=np.array([0.000002, 0.03, 0.08], dtype=float), predictor_names=["list_price", "market_condition", "market_condition"]).calibrate().sample(n)
+    sale_price = LogNormalRegressor(target_mean=LogNormal(log_mean=12.6, log_standard_deviation=0.35, min=80000.0, max=2500000.0).target_mean(), target_variance=LogNormal(log_mean=12.6, log_standard_deviation=0.35, min=80000.0, max=2500000.0).target_variance(), min=80000.0, max=2500000.0, X=np.column_stack([list_price.reshape(-1, 1), lot_size_sqft.reshape(-1, 1), balanced_market.reshape(-1, 1), sellers_market.reshape(-1, 1)]), beta_1_init=np.array([0.000002, 0.000001, 0.03, 0.08], dtype=float), predictor_names=["list_price", "lot_size_sqft", "market_condition", "market_condition"], predictor_transformations={"lot_size_sqft": "log"}).calibrate().sample(n)
     state["sale_price"] = sale_price
 
     days_on_market = PoissonRegressor(target_mean=Poisson(rate=32.0, min=0, max=180).target_mean(), min=0, max=180, X=np.column_stack([balanced_market.reshape(-1, 1), sellers_market.reshape(-1, 1), sale_season_X[:, 1:4], np.column_stack([(seller_motivation == "relocation").astype(float), (seller_motivation == "estate sale").astype(float), (seller_motivation == "downsizing").astype(float)])]), beta_1_init=np.array([-0.12, -0.28, -0.06, -0.02, 0.01, -0.18, 0.12, -0.05], dtype=float), predictor_names=["market_condition", "market_condition", "sale_season", "sale_season", "sale_season", "seller_motivation", "seller_motivation", "seller_motivation"]).calibrate().sample(n)
@@ -252,6 +280,7 @@ def test_data_generator_house_prices():
         "year_built_decade",
         "home_age",
         "sqft_living",
+        "lot_size_sqft",
         "bedrooms",
         "bathrooms",
         "garage_spaces",
@@ -272,3 +301,11 @@ def test_data_generator_house_prices():
             writer.writerow({name: state[name][idx] for name in fieldnames})
 
     print(f"Wrote {output_path}")
+
+
+def main() -> None:
+    test_data_generator_house_prices()
+
+
+if __name__ == "__main__":
+    main()
