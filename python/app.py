@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import altair as alt
 import numpy as np
@@ -892,5 +893,10 @@ def render_selected_section() -> None:
 
 
 st.title("DagFlow")
-chat_url = "http://127.0.0.1:4096"
+opencode_port = int(os.environ.get("OPENCODE_PORT", "4096"))
+codespace_name = os.environ.get("CODESPACE_NAME")
+if codespace_name:
+    chat_url = f"https://{codespace_name}-{opencode_port}.app.github.dev"
+else:
+    chat_url = f"http://127.0.0.1:{opencode_port}"
 render_selected_section()

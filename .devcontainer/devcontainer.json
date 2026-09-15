@@ -11,7 +11,11 @@
       "extensions": ["ms-python.python"]
     }
   },
-  "postCreateCommand": "python -m pip install -r requirements.txt && npm install -g opencode-ai && bash .devcontainer/start-services.sh",
+  "containerEnv": {
+    "OPENCODE_PORT": "4096",
+    "STREAMLIT_PORT": "8501"
+  },
+  "postCreateCommand": "python -m pip install -r requirements.txt && npm install -g opencode-ai",
   "postStartCommand": "bash .devcontainer/start-services.sh",
   "forwardPorts": [4096, 8501],
   "portsAttributes": {

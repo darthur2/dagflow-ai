@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OPENCODE_PORT=4096
-STREAMLIT_PORT=8501
+OPENCODE_PORT="${OPENCODE_PORT:?OPENCODE_PORT is required}"
+STREAMLIT_PORT="${STREAMLIT_PORT:?STREAMLIT_PORT is required}"
 OPENCODE_LOG="/tmp/opencode-web.log"
 STREAMLIT_LOG="/tmp/dagflow-streamlit.log"
 NPM_BIN="${NPM_CONFIG_PREFIX:-/usr/local}/bin"
+OPENCODE_AUTH_DIR="$HOME/.local/share/opencode"
+OPENCODE_AUTH_FILE="$OPENCODE_AUTH_DIR/auth.json"
 
 is_listening() {
   local port="$1"
@@ -33,6 +35,32 @@ ensure_opencode_available() {
   return 1
 }
 
+write_opencode_auth() {
+  mkdir -p "$OPENCODE_AUTH_DIR"
+
+  python - <<'PY' "$OPENCODE_AUTH_FILE"
+import json
+import os
+import sys
+from pathlib import Path
+
+auth_file = Path(sys.argv[1])
+providers = {
+    "ssec-litellm": os.environ.get("SSEC_LITELLM_API_KEY"),
+    "openai": os.environ.get("OPENAI_API_KEY"),
+    "anthropic": os.environ.get("ANTHROPIC_API_KEY"),
+}
+
+payload = {
+    name: {"type": "api", "key": env_var}
+    for name, env_var in providers.items()
+    if env_var
+}
+
+auth_file.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+}
+
 start_background_service() {
   local name="$1"
   local log_file="$2"
@@ -50,8 +78,10 @@ if ! ensure_opencode_available; then
   exit 1
 fi
 
+write_opencode_auth
+
 if ! is_listening "$OPENCODE_PORT"; then
-  start_background_service "opencode web" "$OPENCODE_LOG" opencode serve --hostname 127.0.0.1 --port "$OPENCODE_PORT"
+  start_background_service "opencode web" "$OPENCODE_LOG" opencode web --host 127.0.0.1 --port "$OPENCODE_PORT"
 fi
 
 if ! is_listening "$STREAMLIT_PORT"; then
