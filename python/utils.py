@@ -185,7 +185,7 @@ def make_beta_1(formulas_data: dict, variable_name: str):
         if not category_vectors:
             return np.asarray([], dtype=float)
 
-        return np.asarray(category_vectors, dtype=float)
+        return np.column_stack(category_vectors)
 
     raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
 
