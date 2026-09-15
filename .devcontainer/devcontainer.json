@@ -11,7 +11,7 @@
       "extensions": ["ms-python.python"]
     }
   },
-  "postCreateCommand": "npm install -g opencode && bash .devcontainer/start-services.sh",
+  "postCreateCommand": "npm install -g opencode-ai && bash .devcontainer/start-services.sh",
   "postStartCommand": "bash .devcontainer/start-services.sh",
   "forwardPorts": [4096, 8501],
   "portsAttributes": {

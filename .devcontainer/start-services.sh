@@ -5,6 +5,7 @@ OPENCODE_PORT=4096
 STREAMLIT_PORT=8501
 OPENCODE_LOG="/tmp/opencode-web.log"
 STREAMLIT_LOG="/tmp/dagflow-streamlit.log"
+NPM_BIN="${NPM_CONFIG_PREFIX:-/usr/local}/bin"
 
 is_listening() {
   local port="$1"
@@ -19,6 +20,19 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
 PY
 }
 
+ensure_opencode_available() {
+  if command -v opencode >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [ -x "$NPM_BIN/opencode" ]; then
+    export PATH="$NPM_BIN:$PATH"
+    return 0
+  fi
+
+  return 1
+}
+
 start_background_service() {
   local name="$1"
   local log_file="$2"
@@ -31,7 +45,7 @@ start_background_service() {
   nohup "$@" >"$log_file" 2>&1 &
 }
 
-if ! command -v opencode >/dev/null 2>&1; then
+if ! ensure_opencode_available; then
   echo "opencode is not installed yet; install it before starting services." >&2
   exit 1
 fi
