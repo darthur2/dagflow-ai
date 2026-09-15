@@ -75,6 +75,37 @@ def _transform_predictors(
 
 
 @dataclass(frozen=True)
+class NoneRegressor:
+    X: np.ndarray
+    beta_0: float | np.ndarray | None = None
+    beta_1: np.ndarray | None = None
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
+    response_type: str = "quantitative"
+    categories: list[str] | None = None
+
+    def calibrate(self) -> "NoneRegressor":
+        return self
+
+    def sample(self, n: int) -> np.ndarray:
+        n = int(n)
+        if self.response_type == "quantitative":
+            if self.X.ndim == 2 and self.X.shape[0] > 0:
+                row = self.X[0]
+                if self.beta_1 is not None and np.asarray(self.beta_1).size == row.size:
+                    return (np.asarray(self.beta_0 if self.beta_0 is not None else 0.0, dtype=float) + self.X @ np.asarray(self.beta_1, dtype=float).reshape(-1)).reshape(-1)[:n]
+            return np.full(n, float(self.beta_0 if self.beta_0 is not None else 0.0), dtype=float)
+
+        if self.categories is None:
+            raise ValueError("categories are required for categorical NoneRegressor")
+        if self.response_type == "categorical_nominal":
+            return np.asarray([self.categories[0]] * n, dtype=object)
+        if self.response_type == "categorical_ordinal":
+            return np.asarray([self.categories[0]] * n, dtype=object)
+        raise ValueError(f"Unsupported response_type: {self.response_type}")
+
+
+@dataclass(frozen=True)
 class NormalRegressor:
     target_mean: float
     target_variance: float

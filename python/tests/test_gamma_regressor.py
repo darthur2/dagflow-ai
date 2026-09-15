@@ -116,7 +116,7 @@ def test_gamma_regressor_commute_time_calibrates_and_samples():
         min=5.0,
         max=90.0,
         X=X,
-        beta_1_init=np.array([0.03, -0.01, 0.02, -0.01, 0.015], dtype=float),
+        beta_1_init=np.array([0.02, -0.01, 0.02, -0.01, 0.015], dtype=float),
         predictor_names=["distance_to_downtown_mi", "municipality", "municipality", "municipality", "municipality"],
     )
 
