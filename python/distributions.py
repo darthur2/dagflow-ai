@@ -17,6 +17,26 @@ def _validate_bounds(min_value, max_value) -> None:
 class Normal:
     mean: float
     standard_deviation: float
+
+    def _distribution(self):
+        if self.standard_deviation <= 0:
+            raise ValueError("standard_deviation must be positive")
+        return stats.norm(loc=self.mean, scale=self.standard_deviation)
+
+    def target_mean(self) -> float:
+        return float(self._distribution().mean())
+
+    def target_variance(self) -> float:
+        return float(self._distribution().var())
+
+    def sample(self, n: int) -> np.ndarray:
+        return _as_1d_array(self._distribution().rvs(size=n))
+
+
+@dataclass(frozen=True)
+class TruncatedNormal:
+    mean: float
+    standard_deviation: float
     min: float
     max: float
 
@@ -41,6 +61,25 @@ class Normal:
 @dataclass(frozen=True)
 class Exponential:
     rate: float
+
+    def _distribution(self):
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        return stats.expon(scale=1.0 / self.rate)
+
+    def target_mean(self) -> float:
+        return float(self._distribution().mean())
+
+    def target_variance(self) -> float:
+        return float(self._distribution().var())
+
+    def sample(self, n: int) -> np.ndarray:
+        return _as_1d_array(self._distribution().rvs(size=n))
+
+
+@dataclass(frozen=True)
+class TruncatedExponential:
+    rate: float
     min: float
     max: float
 
@@ -59,6 +98,28 @@ class Exponential:
 
 @dataclass(frozen=True)
 class Gamma:
+    shape: float
+    rate: float
+
+    def _distribution(self):
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        return stats.gamma(a=self.shape, scale=1.0 / self.rate)
+
+    def target_mean(self) -> float:
+        return float(self._distribution().mean())
+
+    def target_variance(self) -> float:
+        return float(self._distribution().var())
+
+    def sample(self, n: int) -> np.ndarray:
+        return _as_1d_array(self._distribution().rvs(size=n))
+
+
+@dataclass(frozen=True)
+class TruncatedGamma:
     shape: float
     rate: float
     min: float
@@ -111,6 +172,26 @@ class Gamma:
 
 @dataclass(frozen=True)
 class LogNormal:
+    log_mean: float
+    log_standard_deviation: float
+
+    def _distribution(self):
+        if self.log_standard_deviation <= 0:
+            raise ValueError("log_standard_deviation must be positive")
+        return stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
+
+    def target_mean(self) -> float:
+        return float(self._distribution().mean())
+
+    def target_variance(self) -> float:
+        return float(self._distribution().var())
+
+    def sample(self, n: int) -> np.ndarray:
+        return _as_1d_array(self._distribution().rvs(size=n))
+
+
+@dataclass(frozen=True)
+class TruncatedLogNormal:
     log_mean: float
     log_standard_deviation: float
     min: float
@@ -178,16 +259,38 @@ class Beta:
             raise ValueError("shape parameters must be positive")
         _validate_bounds(self.min, self.max)
 
-        dist = stats.beta(self.shape_1, self.shape_2)
-        return float(self.min + (self.max - self.min) * dist.mean())
+        dist = stats.beta(self.shape_1, self.shape_2, loc=self.min, scale=self.max - self.min)
+        return float(dist.mean())
 
     def target_variance(self) -> float:
         if self.shape_1 <= 0 or self.shape_2 <= 0:
             raise ValueError("shape parameters must be positive")
         _validate_bounds(self.min, self.max)
 
-        dist = stats.beta(self.shape_1, self.shape_2)
-        return float((self.max - self.min) ** 2 * dist.var())
+        dist = stats.beta(self.shape_1, self.shape_2, loc=self.min, scale=self.max - self.min)
+        return float(dist.var())
+
+
+@dataclass(frozen=True)
+class Binomial:
+    n_trials: int
+    success_prob: float
+
+    def _distribution(self):
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        return stats.binom(self.n_trials, self.success_prob)
+
+    def target_mean(self) -> float:
+        return float(self._distribution().mean())
+
+    def target_variance(self) -> float:
+        return float(self._distribution().var())
+
+    def sample(self, n: int) -> np.ndarray:
+        return _as_1d_array(self._distribution().rvs(size=n))
 
 
 @dataclass(frozen=True)
@@ -224,9 +327,14 @@ class Bernoulli:
             raise ValueError("success_prob must be in [0, 1]")
         return float(self.success_prob)
 
+    def target_variance(self) -> float:
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        return float(self.success_prob * (1.0 - self.success_prob))
+
 
 @dataclass(frozen=True)
-class Binomial:
+class TruncatedBinomial:
     n_trials: int
     success_prob: float
     min: int
@@ -266,6 +374,25 @@ class Binomial:
 @dataclass(frozen=True)
 class Poisson:
     rate: float
+
+    def _distribution(self):
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        return stats.poisson(self.rate)
+
+    def target_mean(self) -> float:
+        return float(self._distribution().mean())
+
+    def target_variance(self) -> float:
+        return float(self._distribution().var())
+
+    def sample(self, n: int) -> np.ndarray:
+        return _as_1d_array(self._distribution().rvs(size=n))
+
+
+@dataclass(frozen=True)
+class TruncatedPoisson:
+    rate: float
     min: int
     max: int
 
@@ -295,9 +422,42 @@ class Poisson:
             raise ValueError("truncation interval has zero probability mass")
         return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
 
+    def target_variance(self) -> float:
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.poisson(self.rate)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
+        return second_moment - mean**2
+
 
 @dataclass(frozen=True)
 class Geometric:
+    success_prob: float
+
+    def _distribution(self):
+        if not 0.0 < self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in (0, 1]")
+        return stats.geom(self.success_prob)
+
+    def target_mean(self) -> float:
+        return float(self._distribution().mean() - 1.0)
+
+    def target_variance(self) -> float:
+        return float(self._distribution().var())
+
+    def sample(self, n: int) -> np.ndarray:
+        return _as_1d_array(self._distribution().rvs(size=n) - 1)
+
+
+@dataclass(frozen=True)
+class TruncatedGeometric:
     success_prob: float
     min: int
     max: int
@@ -345,6 +505,29 @@ class Geometric:
 
 @dataclass(frozen=True)
 class NegativeBinomial:
+    shape: float
+    mean: float
+
+    def _distribution(self):
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.mean < 0:
+            raise ValueError("mean must be non-negative")
+        p = self.shape / (self.shape + self.mean) if self.mean > 0 else 1.0
+        return stats.nbinom(self.shape, p)
+
+    def target_mean(self) -> float:
+        return float(self._distribution().mean())
+
+    def target_variance(self) -> float:
+        return float(self._distribution().var())
+
+    def sample(self, n: int) -> np.ndarray:
+        return _as_1d_array(self._distribution().rvs(size=n))
+
+
+@dataclass(frozen=True)
+class TruncatedNegativeBinomial:
     shape: float
     mean: float
     min: int

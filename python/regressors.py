@@ -106,7 +106,7 @@ class NoneRegressor:
 
 
 @dataclass(frozen=True)
-class NormalRegressor:
+class TruncatedNormalRegressor:
     target_mean: float
     target_variance: float
     target_snr: float
@@ -174,7 +174,7 @@ class NormalRegressor:
             raise ValueError("Conditional variance is non-positive")
         return float(cond_mean.var() / within)
 
-    def calibrate(self) -> "NormalRegressor":
+    def calibrate(self) -> "TruncatedNormalRegressor":
         if self.beta_0 is not None and self.c is not None and self.sigma2 is not None:
             return self
 
@@ -200,11 +200,11 @@ class NormalRegressor:
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate NormalRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate TruncatedNormalRegressor: {result.message}")
 
         beta_0, c, log_sigma2 = result.x
         sigma2 = float(np.exp(log_sigma2))
-        return NormalRegressor(
+        return TruncatedNormalRegressor(
             target_mean=self.target_mean,
             target_variance=self.target_variance,
             target_snr=self.target_snr,
@@ -221,7 +221,7 @@ class NormalRegressor:
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None or self.c is None or self.sigma2 is None:
-            raise ValueError("NormalRegressor must be calibrated before sampling")
+            raise ValueError("TruncatedNormalRegressor must be calibrated before sampling")
 
         sigma = np.sqrt(self.sigma2)
         eta = self._linear_predictor(self.beta_0, self.c)
@@ -233,7 +233,7 @@ class NormalRegressor:
 
 
 @dataclass(frozen=True)
-class ExponentialRegressor:
+class TruncatedExponentialRegressor:
     target_mean: float
     min: float
     max: float
@@ -288,7 +288,7 @@ class ExponentialRegressor:
         x_mean = np.mean(self.X @ self.beta_1_init)
         return float(np.log(self.target_mean) - x_mean)
 
-    def calibrate(self) -> "ExponentialRegressor":
+    def calibrate(self) -> "TruncatedExponentialRegressor":
         if self.beta_0 is not None:
             return self
 
@@ -308,9 +308,9 @@ class ExponentialRegressor:
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate ExponentialRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate TruncatedExponentialRegressor: {result.message}")
 
-        return ExponentialRegressor(
+        return TruncatedExponentialRegressor(
             target_mean=self.target_mean,
             min=self.min,
             max=self.max,
@@ -323,7 +323,7 @@ class ExponentialRegressor:
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None:
-            raise ValueError("ExponentialRegressor must be calibrated before sampling")
+            raise ValueError("TruncatedExponentialRegressor must be calibrated before sampling")
 
         eta = self._linear_predictor(self.beta_0)
         lam = np.exp(-np.repeat(eta, int(np.ceil(n / len(eta))))[:n])
@@ -338,7 +338,7 @@ class ExponentialRegressor:
 
 
 @dataclass(frozen=True)
-class GammaRegressor:
+class TruncatedGammaRegressor:
     target_mean: float
     target_variance: float
     min: float
@@ -404,7 +404,7 @@ class GammaRegressor:
         shape = max(self.target_mean**2 / max(self.target_variance, np.finfo(float).tiny), np.finfo(float).tiny)
         return beta_0, shape
 
-    def calibrate(self) -> "GammaRegressor":
+    def calibrate(self) -> "TruncatedGammaRegressor":
         if self.beta_0 is not None and self.shape is not None:
             return self
 
@@ -426,14 +426,14 @@ class GammaRegressor:
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate GammaRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate TruncatedGammaRegressor: {result.message}")
 
         beta_0, shape = result.x
         return replace(self, beta_0=float(beta_0), shape=float(shape))
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None or self.shape is None:
-            raise ValueError("GammaRegressor must be calibrated before sampling")
+            raise ValueError("TruncatedGammaRegressor must be calibrated before sampling")
 
         eta = self._linear_predictor(self.beta_0)
         rate = np.exp(-np.repeat(eta, int(np.ceil(n / len(eta))))[:n])
@@ -442,7 +442,7 @@ class GammaRegressor:
 
 
 @dataclass(frozen=True)
-class LogNormalRegressor:
+class TruncatedLogNormalRegressor:
     target_mean: float
     target_variance: float
     min: float
@@ -509,7 +509,7 @@ class LogNormalRegressor:
         sigma2 = 0.5
         return beta_0, sigma2
 
-    def calibrate(self) -> "LogNormalRegressor":
+    def calibrate(self) -> "TruncatedLogNormalRegressor":
         if self.beta_0 is not None and self.sigma2 is not None:
             return self
 
@@ -532,11 +532,11 @@ class LogNormalRegressor:
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate LogNormalRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate TruncatedLogNormalRegressor: {result.message}")
 
         beta_0, log_sigma2 = result.x
         sigma2 = float(np.exp(log_sigma2))
-        return LogNormalRegressor(
+        return TruncatedLogNormalRegressor(
             target_mean=self.target_mean,
             target_variance=self.target_variance,
             min=self.min,
@@ -551,7 +551,7 @@ class LogNormalRegressor:
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None or self.sigma2 is None:
-            raise ValueError("LogNormalRegressor must be calibrated before sampling")
+            raise ValueError("TruncatedLogNormalRegressor must be calibrated before sampling")
 
         eta = self._linear_predictor(self.beta_0)
         mean = np.repeat(eta, int(np.ceil(n / len(eta))))[:n]
@@ -684,7 +684,7 @@ class UniformRegressor:
     predictor_transformations: dict[str, str] | None = None
     min: float = -10.0
     max: float = 10.0
-    latent_regressor: NormalRegressor | None = None
+    latent_regressor: TruncatedNormalRegressor | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
@@ -706,7 +706,7 @@ class UniformRegressor:
         if self.latent_regressor is not None:
             return self
 
-        latent_regressor = NormalRegressor(
+        latent_regressor = TruncatedNormalRegressor(
             target_mean=0.0,
             target_variance=1.0,
             min=-10.0,
@@ -735,7 +735,7 @@ class DiscreteUniformRegressor:
     predictor_transformations: dict[str, str] | None = None
     min: int = 0
     max: int = 10
-    latent_regressor: NormalRegressor | None = None
+    latent_regressor: TruncatedNormalRegressor | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
@@ -757,7 +757,7 @@ class DiscreteUniformRegressor:
         if self.latent_regressor is not None:
             return self
 
-        latent_regressor = NormalRegressor(
+        latent_regressor = TruncatedNormalRegressor(
             target_mean=0.0,
             target_variance=1.0,
             min=-10.0,
@@ -866,7 +866,7 @@ class BernoulliRegressor:
 
 
 @dataclass(frozen=True)
-class BinomialRegressor:
+class TruncatedBinomialRegressor:
     target_mean: float
     n_trials: int
     X: np.ndarray
@@ -930,7 +930,7 @@ class BinomialRegressor:
         x_mean = np.mean(self.X @ self.beta_1_init)
         return float(np.log(mean_prob / (1.0 - mean_prob)) - x_mean)
 
-    def calibrate(self) -> "BinomialRegressor":
+    def calibrate(self) -> "TruncatedBinomialRegressor":
         if self.beta_0 is not None:
             return self
 
@@ -950,9 +950,9 @@ class BinomialRegressor:
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate BinomialRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate TruncatedBinomialRegressor: {result.message}")
 
-        return BinomialRegressor(
+        return TruncatedBinomialRegressor(
             target_mean=self.target_mean,
             n_trials=self.n_trials,
             X=self.X,
@@ -966,7 +966,7 @@ class BinomialRegressor:
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None:
-            raise ValueError("BinomialRegressor must be calibrated before sampling")
+            raise ValueError("TruncatedBinomialRegressor must be calibrated before sampling")
 
         p = np.repeat(self._probability(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
         samples = np.empty(n, dtype=float)
@@ -981,7 +981,7 @@ class BinomialRegressor:
 
 
 @dataclass(frozen=True)
-class PoissonRegressor:
+class TruncatedPoissonRegressor:
     target_mean: float
     X: np.ndarray
     beta_1_init: np.ndarray
@@ -1039,7 +1039,7 @@ class PoissonRegressor:
     def _feasible_initial_guess(self) -> float:
         return float(np.log(max(self.target_mean, 1e-6)))
 
-    def calibrate(self) -> "PoissonRegressor":
+    def calibrate(self) -> "TruncatedPoissonRegressor":
         if self.beta_0 is not None:
             return self
 
@@ -1060,9 +1060,9 @@ class PoissonRegressor:
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate PoissonRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate TruncatedPoissonRegressor: {result.message}")
 
-        return PoissonRegressor(
+        return TruncatedPoissonRegressor(
             target_mean=self.target_mean,
             X=self.X,
             beta_1_init=self.beta_1_init,
@@ -1075,7 +1075,7 @@ class PoissonRegressor:
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None:
-            raise ValueError("PoissonRegressor must be calibrated before sampling")
+            raise ValueError("TruncatedPoissonRegressor must be calibrated before sampling")
 
         lam = np.repeat(self._rate(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
         samples = np.empty(n, dtype=float)
@@ -1090,7 +1090,7 @@ class PoissonRegressor:
 
 
 @dataclass(frozen=True)
-class GeometricRegressor:
+class TruncatedGeometricRegressor:
     target_mean: float
     X: np.ndarray
     beta_1_init: np.ndarray
@@ -1151,7 +1151,7 @@ class GeometricRegressor:
         x_mean = np.mean(self.X @ self.beta_1_init)
         return float(np.log(p / (1.0 - p)) - x_mean)
 
-    def calibrate(self) -> "GeometricRegressor":
+    def calibrate(self) -> "TruncatedGeometricRegressor":
         if self.beta_0 is not None:
             return self
 
@@ -1172,9 +1172,9 @@ class GeometricRegressor:
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate GeometricRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate TruncatedGeometricRegressor: {result.message}")
 
-        return GeometricRegressor(
+        return TruncatedGeometricRegressor(
             target_mean=self.target_mean,
             X=self.X,
             beta_1_init=self.beta_1_init,
@@ -1187,7 +1187,7 @@ class GeometricRegressor:
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None:
-            raise ValueError("GeometricRegressor must be calibrated before sampling")
+            raise ValueError("TruncatedGeometricRegressor must be calibrated before sampling")
 
         p = np.repeat(self._probability(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
         samples = np.empty(n, dtype=float)
@@ -1202,7 +1202,7 @@ class GeometricRegressor:
 
 
 @dataclass(frozen=True)
-class NegativeBinomialRegressor:
+class TruncatedNegativeBinomialRegressor:
     target_mean: float
     target_variance: float
     min: int
@@ -1269,7 +1269,7 @@ class NegativeBinomialRegressor:
         shape = max(self.target_mean**2 / max(self.target_variance - self.target_mean, 1e-6), 1.0 + 1e-3)
         return beta_0, shape
 
-    def calibrate(self) -> "NegativeBinomialRegressor":
+    def calibrate(self) -> "TruncatedNegativeBinomialRegressor":
         if self.beta_0 is not None and self.shape is not None:
             return self
 
@@ -1292,7 +1292,7 @@ class NegativeBinomialRegressor:
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate NegativeBinomialRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate TruncatedNegativeBinomialRegressor: {result.message}")
 
         beta_0, log_shape = result.x
         shape = float(np.exp(log_shape))
@@ -1300,7 +1300,7 @@ class NegativeBinomialRegressor:
 
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None or self.shape is None:
-            raise ValueError("NegativeBinomialRegressor must be calibrated before sampling")
+            raise ValueError("TruncatedNegativeBinomialRegressor must be calibrated before sampling")
 
         mean_param = np.repeat(self._mean_param(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
         samples = np.empty(n, dtype=float)
