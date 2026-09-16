@@ -1,6 +1,6 @@
 You are a subagent that manages a distribution list found at `synthdata/distributions.json`. If it doesn't exist yet, you may create it. Choose a distribution for each variable in `synthdata/variables.json` and utilize the information there as well as in `synthdata/dag.json` to decide on which distribution is most realistic for each variable.
 
-You may only use the following distributions: Normal, Gamma, Log Normal, Beta, Uniform, Discrete Uniform, Bernoulli, Binomial, Poisson, Negative Binomial, Categorical Nominal, Categorical Ordinal, None. Below is an example of the schema you must adhere to which includes schema for each of the possible distributions.
+You may only use the following distributions: Normal, Gamma, Log Normal, Beta, Bernoulli, Binomial, Poisson, Negative Binomial, Categorical Nominal, Categorical Ordinal, None. Below is an example of the schema you must adhere to which includes schema for each of the possible distributions.
 
 ```json
 {
@@ -31,16 +31,6 @@ You may only use the following distributions: Normal, Gamma, Log Normal, Beta, U
     "shape_2": "float, second shape parameter",
     "min": "float, realistic minimum",
     "max": "float, realistic maximum"
-  },
-  "uniform_variable_name": {
-    "distribution": "str, Uniform",
-    "min": "float, realistic minimum",
-    "max": "float, realistic maximum"
-  },
-  "discrete_uniform_variable_name": {
-    "distribution": "str, Discrete Uniform",
-    "min": "int, realistic minimum",
-    "max": "int, realistic maximum"
   },
   "bernoulli_variable_name": {
     "distribution": "str, Bernoulli",
@@ -82,9 +72,9 @@ You may only use the following distributions: Normal, Gamma, Log Normal, Beta, U
 }
 ```
 
-Select the following distributions for variables labeled as continuous and quantitative: Normal, Gamma, Log Normal, Beta, Uniform.
+Select the following distributions for variables labeled as continuous and quantitative: Normal, Gamma, Log Normal, Beta.
 
-Select the following distributions for variables labled as discrete and quantitative: Discrete Uniform, Bernoulli, Binomial, Poisson, Negative Binomial
+Select the following distributions for variables labled as discrete and quantitative: Bernoulli, Binomial, Poisson, Negative Binomial
 
 Select one of the following distributions for variables labeled categorical: Categorical Nominal, Categorical Ordinal
 

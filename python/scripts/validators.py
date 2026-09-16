@@ -278,8 +278,8 @@ def _variables_distribution_consistency_report(variables_data: dict[str, Any], d
     categorical_nominal_mismatches: dict[str, str] = {}
     categorical_ordinal_mismatches: dict[str, str] = {}
 
-    continuous_distributions = {"Normal", "Exponential", "Gamma", "Log Normal", "Beta", "Uniform"}
-    discrete_distributions = {"Discrete Uniform", "Bernoulli", "Binomial", "Poisson", "Geometric", "Negative Binomial"}
+    continuous_distributions = {"Normal", "Gamma", "Log Normal", "Beta"}
+    discrete_distributions = {"Bernoulli", "Binomial", "Poisson", "Negative Binomial"}
 
     for variable_name in sorted(shared_names):
         variable_item = variables_data.get(variable_name)
@@ -429,16 +429,12 @@ def _formulas_distribution_consistency_report(formulas_data: dict[str, Any], dis
 
     quantitative_distributions = {
         "Normal",
-        "Exponential",
         "Gamma",
         "Log Normal",
         "Beta",
-        "Uniform",
-        "Discrete Uniform",
         "Bernoulli",
         "Binomial",
         "Poisson",
-        "Geometric",
         "Negative Binomial",
     }
 
@@ -776,19 +772,6 @@ class NormalDistribution(BoundedDistribution):
             raise ValueError("standard_deviation must be positive")
         return value
 
-class ExponentialDistribution(BoundedDistribution):
-    model_config = ConfigDict(extra="forbid")
-
-    distribution: Literal["Exponential"]
-    rate: float
-
-    @field_validator("rate")
-    @classmethod
-    def _validate_rate(cls, value: float) -> float:
-        if value <= 0:
-            raise ValueError("rate must be positive")
-        return value
-
 class GammaDistribution(BoundedDistribution):
     model_config = ConfigDict(extra="forbid")
 
@@ -831,14 +814,6 @@ class BetaDistribution(BoundedDistribution):
             raise ValueError(f"{info.field_name} must be positive")
         return value
 
-class UniformDistribution(BoundedDistribution):
-    model_config = ConfigDict(extra="forbid")
-
-    distribution: Literal["Uniform"]
-class DiscreteUniformDistribution(BoundedDistribution):
-    model_config = ConfigDict(extra="forbid")
-
-    distribution: Literal["Discrete Uniform"]
 class BernoulliDistribution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -885,19 +860,6 @@ class PoissonDistribution(BoundedDistribution):
     def _validate_rate(cls, value: float) -> float:
         if value <= 0:
             raise ValueError("rate must be positive")
-        return value
-
-class GeometricDistribution(BoundedDistribution):
-    model_config = ConfigDict(extra="forbid")
-
-    distribution: Literal["Geometric"]
-    success_prob: float
-
-    @field_validator("success_prob")
-    @classmethod
-    def _validate_success_prob(cls, value: float) -> float:
-        if not 0.0 <= value <= 1.0:
-            raise ValueError("success_prob must be in [0, 1]")
         return value
 
 class NegativeBinomialDistribution(BoundedDistribution):
@@ -1034,16 +996,12 @@ FormulaValue = QuantitativeFormula | CategoricalNominalFormula | CategoricalOrdi
 
 _DISTRIBUTION_MODELS: dict[str, type[BaseModel]] = {
     "Normal": NormalDistribution,
-    "Exponential": ExponentialDistribution,
     "Gamma": GammaDistribution,
     "Log Normal": LogNormalDistribution,
     "Beta": BetaDistribution,
-    "Uniform": UniformDistribution,
-    "Discrete Uniform": DiscreteUniformDistribution,
     "Bernoulli": BernoulliDistribution,
     "Binomial": BinomialDistribution,
     "Poisson": PoissonDistribution,
-    "Geometric": GeometricDistribution,
     "Negative Binomial": NegativeBinomialDistribution,
     "Categorical Nominal": CategoricalNominalDistribution,
     "Categorical Ordinal": CategoricalOrdinalDistribution,

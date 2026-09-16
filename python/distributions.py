@@ -399,26 +399,6 @@ class Binomial:
 
 
 @dataclass(frozen=True)
-class Uniform:
-    min: float
-    max: float
-
-    def sample(self, n: int) -> np.ndarray:
-        _validate_bounds(self.min, self.max)
-        return _as_1d_array(stats.uniform.rvs(loc=self.min, scale=self.max - self.min, size=n))
-
-
-@dataclass(frozen=True)
-class DiscreteUniform:
-    min: int
-    max: int
-
-    def sample(self, n: int) -> np.ndarray:
-        _validate_bounds(self.min, self.max)
-        return _as_1d_array(stats.randint.rvs(low=self.min, high=self.max + 1, size=n))
-
-
-@dataclass(frozen=True)
 class Bernoulli:
     success_prob: float
 
