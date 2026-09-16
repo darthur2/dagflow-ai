@@ -10,16 +10,12 @@ from distributions import (
     Binomial,
     CategoricalNominal,
     CategoricalOrdinal,
-    DiscreteUniform,
-    Exponential,
     Gamma,
-    Geometric,
     LogNormal,
     NegativeBinomial,
     NoneDistribution,
     Normal,
     Poisson,
-    Uniform,
 )
 
 
@@ -41,26 +37,18 @@ def make_distribution(distributions_data: dict, variable_name: str):
 
     if distribution_name == "Normal":
         return Normal(**parameters)
-    if distribution_name == "Exponential":
-        return Exponential(**parameters)
     if distribution_name == "Gamma":
         return Gamma(**parameters)
     if distribution_name == "Log Normal":
         return LogNormal(**parameters)
     if distribution_name == "Beta":
         return Beta(**parameters)
-    if distribution_name == "Uniform":
-        return Uniform(**parameters)
-    if distribution_name == "Discrete Uniform":
-        return DiscreteUniform(**parameters)
     if distribution_name == "Bernoulli":
         return Bernoulli(**parameters)
     if distribution_name == "Binomial":
         return Binomial(**parameters)
     if distribution_name == "Poisson":
         return Poisson(**parameters)
-    if distribution_name == "Geometric":
-        return Geometric(**parameters)
     if distribution_name == "Negative Binomial":
         return NegativeBinomial(**parameters)
     if distribution_name == "Categorical Nominal":
@@ -167,8 +155,27 @@ def make_beta_1(formulas_data: dict, variable_name: str):
     if "intercept" in formula and "snr" in formula and "predictors" in formula:
         return np.asarray(_predictor_coefficients(formula["predictors"]), dtype=float)
 
-    if "reference_category" in formula and "other_categories" in formula and "predictors" in formula:
-        coefficients, _, _ = _flatten_predictor_coefficients_and_names(formula["predictors"])
+    if formula.get("type") == "categorical_nominal":
+        category_models = formula.get("category_models", {})
+        if not isinstance(category_models, dict):
+            raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
+        category_vectors = []
+        for category_block in category_models.values():
+            if not isinstance(category_block, dict):
+                raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
+            predictors = category_block.get("predictors", {})
+            if not isinstance(predictors, dict):
+                raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
+            coefficients, _, _ = _flatten_predictor_coefficients_and_names(predictors)
+            category_vectors.append(coefficients)
+
+        if not category_vectors:
+            return np.asarray([], dtype=float)
+
+        return np.column_stack(category_vectors)
+
+    if formula.get("type") == "categorical_ordinal":
+        coefficients, _, _ = _flatten_predictor_coefficients_and_names(formula.get("predictors", {}))
         return np.asarray(coefficients, dtype=float)
 
     if "reference_category" in formula and "other_categories" in formula:
@@ -190,50 +197,6 @@ def make_beta_1(formulas_data: dict, variable_name: str):
     raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
 
 
-def get_predictor_names(formulas_data: dict, variable_name: str) -> list[str]:
-    if variable_name not in formulas_data:
-        raise ValueError(f"Unknown variable: {variable_name}")
-
-    formula = formulas_data[variable_name]
-
-    if "intercept" in formula and "snr" in formula and "predictors" in formula:
-        return _predictor_names(formula["predictors"])
-
-    if "reference_category" in formula and "other_categories" in formula and "predictors" in formula:
-        _, names, _ = _flatten_predictor_coefficients_and_names(formula["predictors"])
-        return names
-
-    if "reference_category" in formula and "other_categories" in formula:
-        names: list[str] = []
-        for category_block in formula["other_categories"].values():
-            names.extend(_predictor_names(category_block.get("predictors", {})))
-        return names
-
-    raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
-
-
-def get_predictor_transformations(formulas_data: dict, variable_name: str) -> dict[str, str]:
-    if variable_name not in formulas_data:
-        raise ValueError(f"Unknown variable: {variable_name}")
-
-    formula = formulas_data[variable_name]
-
-    if "intercept" in formula and "snr" in formula and "predictors" in formula:
-        return _predictor_transformations(formula["predictors"])
-
-    if "reference_category" in formula and "other_categories" in formula and "predictors" in formula:
-        _, _, transformations = _flatten_predictor_coefficients_and_names(formula["predictors"])
-        return transformations
-
-    if "reference_category" in formula and "other_categories" in formula:
-        transformations: dict[str, str] = {}
-        for category_block in formula["other_categories"].values():
-            transformations.update(_predictor_transformations(category_block.get("predictors", {})))
-        return transformations
-
-    raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
-
-
 def get_beta_0(formulas_data: dict, variable_name: str):
     if variable_name not in formulas_data:
         raise ValueError(f"Unknown variable: {variable_name}")
@@ -242,6 +205,19 @@ def get_beta_0(formulas_data: dict, variable_name: str):
 
     if "intercept" in formula and "snr" in formula and "predictors" in formula:
         return float(formula["intercept"])
+
+    if formula.get("type") == "categorical_nominal":
+        category_models = formula.get("category_models", {})
+        if not isinstance(category_models, dict):
+            raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
+        intercepts = [float(category_block["intercept"]) for category_block in category_models.values() if isinstance(category_block, dict)]
+        return np.asarray(intercepts, dtype=float)
+
+    if formula.get("type") == "categorical_ordinal":
+        thresholds = formula.get("thresholds", {})
+        if not isinstance(thresholds, dict):
+            raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
+        return np.asarray([float(threshold["intercept"]) for threshold in thresholds.values() if isinstance(threshold, dict)], dtype=float)
 
     if "reference_category" in formula and "other_categories" in formula:
         intercepts = [float(category_block["intercept"]) for category_block in formula["other_categories"].values()]
@@ -255,6 +231,20 @@ def get_categories(formulas_data: dict, variable_name: str) -> list[str]:
         raise ValueError(f"Unknown variable: {variable_name}")
 
     formula = formulas_data[variable_name]
+
+    if formula.get("type") == "categorical_nominal":
+        reference_category = formula.get("reference_category")
+        category_models = formula.get("category_models", {})
+        if not isinstance(reference_category, str) or not isinstance(category_models, dict):
+            raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
+        return [reference_category, *category_models.keys()]
+
+    if formula.get("type") == "categorical_ordinal":
+        reference_category = formula.get("reference_category")
+        thresholds = formula.get("thresholds", {})
+        if not isinstance(reference_category, str) or not isinstance(thresholds, dict):
+            raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
+        return [reference_category, *thresholds.keys()]
 
     if "reference_category" in formula and "other_categories" in formula:
         reference_category = formula["reference_category"]

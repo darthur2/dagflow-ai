@@ -18,23 +18,17 @@ from regressors import (
     BinomialRegressor,
     CategoricalNominalRegressor,
     CategoricalOrdinalRegressor,
-    DiscreteUniformRegressor,
-    ExponentialRegressor,
     GammaRegressor,
-    GeometricRegressor,
     LogNormalRegressor,
     NegativeBinomialRegressor,
     NoneRegressor,
     NormalRegressor,
     PoissonRegressor,
-    UniformRegressor,
 )
 from utils import (
     get_beta_0,
     get_categories,
     get_dag_order,
-    get_predictor_names,
-    get_predictor_transformations,
     get_snr,
     load_json,
     make_beta_1,
@@ -120,16 +114,12 @@ def _raise_generation_error(
 def _regressor_for_distribution_name(distribution_name: str):
     mapping = {
         "Normal": NormalRegressor,
-        "Exponential": ExponentialRegressor,
         "Gamma": GammaRegressor,
         "Log Normal": LogNormalRegressor,
         "Beta": BetaRegressor,
-        "Uniform": UniformRegressor,
-        "Discrete Uniform": DiscreteUniformRegressor,
         "Bernoulli": BernoulliRegressor,
         "Binomial": BinomialRegressor,
         "Poisson": PoissonRegressor,
-        "Geometric": GeometricRegressor,
         "Negative Binomial": NegativeBinomialRegressor,
         "Categorical Nominal": CategoricalNominalRegressor,
         "Categorical Ordinal": CategoricalOrdinalRegressor,
@@ -146,8 +136,6 @@ def _distribution_name(distribution) -> str:
         return "Categorical Nominal" if name == "CategoricalNominal" else "Categorical Ordinal"
     if name == "NoneDistribution":
         return "None"
-    if name == "DiscreteUniform":
-        return "Discrete Uniform"
     if name == "LogNormal":
         return "Log Normal"
     if name == "NegativeBinomial":
@@ -196,127 +184,98 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
         try:
             if distribution_name == "Normal":
                 regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
-                    target_variance=distribution.target_variance(),
+                    mean=distribution.mean,
+                    standard_deviation=distribution.standard_deviation,
                     target_snr=get_snr(formulas_data, variable_name),
                     min=distribution.min,
                     max=distribution.max,
                     X=X,
-                    beta_1_init=beta_1,
-                    predictor_names=predictor_names,
-                    predictor_transformations=predictor_transformations,
-                )
-            elif distribution_name == "Exponential":
-                regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
-                    target_snr=get_snr(formulas_data, variable_name),
-                    min=distribution.min,
-                    max=distribution.max,
-                    X=X,
-                    beta_1_init=beta_1,
+                    beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
                 )
             elif distribution_name == "Gamma":
                 regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
-                    target_variance=distribution.target_variance(),
+                    shape=distribution.shape,
+                    rate=distribution.rate,
                     min=distribution.min,
                     max=distribution.max,
+                    truncated=distribution.truncated,
+                    target_snr=get_snr(formulas_data, variable_name),
                     X=X,
-                    beta_1_init=beta_1,
+                    beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
                 )
             elif distribution_name == "Log Normal":
                 regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
-                    target_variance=distribution.target_variance(),
+                    log_mean=distribution.log_mean,
+                    log_standard_deviation=distribution.log_standard_deviation,
                     min=distribution.min,
                     max=distribution.max,
+                    truncated=distribution.truncated,
+                    target_snr=get_snr(formulas_data, variable_name),
                     X=X,
-                    beta_1_init=beta_1,
+                    beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
                 )
             elif distribution_name == "Beta":
                 regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
-                    target_variance=distribution.target_variance(),
+                    shape_1=distribution.shape_1,
+                    shape_2=distribution.shape_2,
                     min=distribution.min,
                     max=distribution.max,
-                    X=X,
-                    beta_1_init=beta_1,
-                    predictor_names=predictor_names,
-                    predictor_transformations=predictor_transformations,
-                )
-            elif distribution_name == "Uniform":
-                regressor = regressor_cls(
-                    target_mean=distribution.min + (distribution.max - distribution.min) / 2.0,
-                    min=distribution.min,
-                    max=distribution.max,
-                    X=X,
-                    beta_1_init=beta_1,
-                    predictor_names=predictor_names,
-                    predictor_transformations=predictor_transformations,
-                )
-            elif distribution_name == "Discrete Uniform":
-                regressor = regressor_cls(
                     target_snr=get_snr(formulas_data, variable_name),
-                    min=distribution.min,
-                    max=distribution.max,
                     X=X,
-                    beta_1_init=beta_1,
+                    beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
                 )
             elif distribution_name == "Bernoulli":
                 regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
+                    success_prob=distribution.success_prob,
+                    target_snr=get_snr(formulas_data, variable_name),
                     X=X,
-                    beta_1_init=beta_1,
+                    beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
                 )
             elif distribution_name == "Binomial":
                 regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
+                    success_prob=distribution.success_prob,
                     n_trials=distribution.n_trials,
-                    X=X,
-                    beta_1_init=beta_1,
                     min=distribution.min,
                     max=distribution.max,
+                    truncated=distribution.truncated,
+                    target_snr=get_snr(formulas_data, variable_name),
+                    X=X,
+                    beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
                 )
             elif distribution_name == "Poisson":
                 regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
-                    X=X,
-                    beta_1_init=beta_1,
+                    rate=distribution.rate,
                     min=distribution.min,
                     max=distribution.max,
-                    predictor_names=predictor_names,
-                    predictor_transformations=predictor_transformations,
-                )
-            elif distribution_name == "Geometric":
-                regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
+                    truncated=distribution.truncated,
+                    target_snr=get_snr(formulas_data, variable_name),
                     X=X,
-                    beta_1_init=beta_1,
-                    min=distribution.min,
-                    max=distribution.max,
+                    beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
                 )
             elif distribution_name == "Negative Binomial":
                 regressor = regressor_cls(
-                    target_mean=distribution.target_mean(),
                     shape=distribution.shape,
-                    X=X,
-                    beta_1_init=beta_1,
+                    mean=distribution.mean,
                     min=distribution.min,
                     max=distribution.max,
+                    truncated=distribution.truncated,
+                    target_snr=get_snr(formulas_data, variable_name),
+                    X=X,
+                    beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
                 )

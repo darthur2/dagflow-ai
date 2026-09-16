@@ -448,23 +448,35 @@ def expand_predictors_for_display(predictors: dict) -> list[str]:
 
 
 def build_formula_string(response_name: str, formula: dict, distributions: dict, selected_category: str | None = None) -> str:
-    distribution_name = distributions.get(response_name, {}).get("distribution", "")
-
     if "intercept" in formula and "predictors" in formula:
         terms = [format_numeric_value(formula.get("intercept", "0"))]
         terms.extend(expand_predictors_for_display(formula.get("predictors", {})))
         return f"{response_name} ~ " + format_formula_terms(terms)
 
-    if "reference_category" in formula and "other_categories" in formula:
-        category_name = selected_category or next(iter(formula.get("other_categories", {}).keys()), None)
+    if formula.get("type") == "categorical_nominal":
+        category_models = formula.get("category_models", {})
+        if not isinstance(category_models, dict):
+            return f"{response_name} ~ Unknown"
+        category_name = selected_category or next(iter(category_models.keys()), None)
         if category_name is None:
             return f"{response_name} ~ Unknown"
 
-        category_block = formula["other_categories"][category_name]
+        category_block = category_models[category_name]
         terms = [format_numeric_value(category_block.get("intercept", "0"))]
+        terms.extend(expand_predictors_for_display(category_block.get("predictors", {})))
+        return f"{response_name} ~ " + format_formula_terms(terms)
+
+    if formula.get("type") == "categorical_ordinal":
+        thresholds = formula.get("thresholds", {})
+        if not isinstance(thresholds, dict):
+            return f"{response_name} ~ Unknown"
+        category_name = selected_category or next(iter(thresholds.keys()), None)
+        if category_name is None:
+            return f"{response_name} ~ Unknown"
+
+        threshold = thresholds[category_name]
+        terms = [format_numeric_value(threshold.get("intercept", "0"))]
         terms.extend(expand_predictors_for_display(formula.get("predictors", {})))
-        if "predictors" in category_block:
-            terms.extend(expand_predictors_for_display(category_block.get("predictors", {})))
         return f"{response_name} ~ " + format_formula_terms(terms)
 
     return f"{response_name} ~ Unknown"
@@ -512,8 +524,8 @@ def render_quantitative_formula(response_name: str, formula: dict, distributions
 
 
 def render_nominal_formula(response_name: str, formula: dict, distributions: dict) -> None:
-    categories = formula.get("other_categories", {})
-    category_names = sorted(categories.keys())
+    category_models = formula.get("category_models", {})
+    category_names = list(category_models.keys()) if isinstance(category_models, dict) else []
 
     left, right = st.columns([1, 1.4])
 
@@ -534,7 +546,7 @@ def render_nominal_formula(response_name: str, formula: dict, distributions: dic
             key=f"nominal_category_select_{response_name}",
         )
         selected_category = category_label_to_name[selected_category_label]
-        category_block = categories[selected_category]
+        category_block = category_models[selected_category]
         render_field_value("Intercept", category_block.get("intercept", "Unknown"))
 
         render_section_header("Predictors")
@@ -545,8 +557,8 @@ def render_nominal_formula(response_name: str, formula: dict, distributions: dic
 
 
 def render_ordinal_formula(response_name: str, formula: dict, distributions: dict) -> None:
-    categories = formula.get("other_categories", {})
-    category_names = sorted(categories.keys())
+    thresholds = formula.get("thresholds", {})
+    category_names = list(thresholds.keys()) if isinstance(thresholds, dict) else []
 
     left, right = st.columns([1, 1.4])
 
@@ -567,7 +579,7 @@ def render_ordinal_formula(response_name: str, formula: dict, distributions: dic
             key=f"ordinal_category_select_{response_name}",
         )
         selected_category = category_label_to_name[selected_category_label]
-        render_field_value("Intercept", categories[selected_category].get("intercept", "Unknown"))
+        render_field_value("Intercept", thresholds[selected_category].get("intercept", "Unknown"))
 
         render_section_header("Predictors")
         render_predictor_selector(formula.get("predictors", {}), response_name)
@@ -585,11 +597,11 @@ def render_formula_block(response_name: str, formula: dict, distributions: dict)
         render_quantitative_formula(response_name, formula, distributions)
         return
 
-    if "reference_category" in formula and "other_categories" in formula and "predictors" in formula and "intercept" not in formula:
+    if formula.get("type") == "categorical_ordinal":
         render_ordinal_formula(response_name, formula, distributions)
         return
 
-    if "reference_category" in formula and "other_categories" in formula:
+    if formula.get("type") == "categorical_nominal":
         render_nominal_formula(response_name, formula, distributions)
         return
 
@@ -610,10 +622,10 @@ def build_distribution_chart(item: dict):
     parameters = {key: value for key, value in item.items() if key != "distribution"}
     chart_title = item.get("__name__")
 
-    if distribution_name in {"Normal", "Exponential", "Gamma", "Log Normal", "Beta", "Uniform"}:
+    if distribution_name in {"Normal", "Gamma", "Log Normal", "Beta"}:
         return build_truncated_density_chart(distribution_name, parameters, chart_title)
 
-    if distribution_name in {"Discrete Uniform", "Bernoulli", "Binomial", "Poisson", "Geometric", "Negative Binomial"}:
+    if distribution_name in {"Bernoulli", "Binomial", "Poisson", "Negative Binomial"}:
         return build_truncated_pmf_chart(distribution_name, parameters, chart_title)
 
     if distribution_name in {"Categorical Ordinal", "Categorical Nominal"}:
@@ -705,44 +717,32 @@ def build_truncated_pmf_chart(distribution_name: str, parameters: dict, chart_ti
 def density_distribution(distribution_name: str, parameters: dict):
     if distribution_name == "Normal":
         return stats.norm(loc=parameters["mean"], scale=parameters["standard_deviation"])
-    if distribution_name == "Exponential":
-        return stats.expon(scale=1.0 / parameters["rate"])
     if distribution_name == "Gamma":
         return stats.gamma(a=parameters["shape"], scale=1.0 / parameters["rate"])
     if distribution_name == "Log Normal":
         return stats.lognorm(s=parameters["log_standard_deviation"], scale=np.exp(parameters["log_mean"]))
     if distribution_name == "Beta":
         return stats.beta(a=parameters["shape_1"], b=parameters["shape_2"])
-    if distribution_name == "Uniform":
-        return stats.uniform(loc=parameters["min"], scale=parameters["max"] - parameters["min"])
     return None
 
 
 def support_floor(distribution_name: str, dist):
-    if distribution_name in {"Exponential", "Gamma", "Uniform"}:
-        return 0 if distribution_name != "Uniform" else dist.support()[0]
+    if distribution_name == "Gamma":
+        return 0
     return dist.ppf(0.001)
 
 
 def support_ceiling(distribution_name: str, dist):
-    if distribution_name == "Uniform":
-        return dist.support()[1]
     return dist.ppf(0.999)
 
 
 def pmf_distribution(distribution_name: str, parameters: dict):
-    if distribution_name == "Discrete Uniform":
-        if "min" not in parameters or "max" not in parameters:
-            return None
-        return stats.randint(low=parameters["min"], high=parameters["max"] + 1)
     if distribution_name == "Bernoulli":
         return stats.bernoulli(p=parameters["success_prob"])
     if distribution_name == "Binomial":
         return stats.binom(n=parameters["n_trials"], p=parameters["success_prob"])
     if distribution_name == "Poisson":
         return stats.poisson(mu=parameters["rate"])
-    if distribution_name == "Geometric":
-        return stats.geom(p=parameters["success_prob"])
     if distribution_name == "Negative Binomial":
         shape = parameters["shape"]
         mean = parameters["mean"]
@@ -752,10 +752,6 @@ def pmf_distribution(distribution_name: str, parameters: dict):
 
 
 def pmf_support(distribution_name: str, parameters: dict, min_value, max_value):
-    if distribution_name == "Discrete Uniform":
-        if "min" not in parameters or "max" not in parameters:
-            return np.array([])
-        return np.arange(int(parameters["min"]), int(parameters["max"]) + 1)
     if distribution_name == "Bernoulli":
         return np.array([0, 1])
     if distribution_name == "Binomial":
@@ -764,10 +760,6 @@ def pmf_support(distribution_name: str, parameters: dict, min_value, max_value):
         upper_bound = max_value if max_value is not None else parameters.get("max")
         upper = int(max(upper_bound if upper_bound is not None else 0, parameters["rate"] + 6 * np.sqrt(parameters["rate"])))
         return np.arange(0, upper + 1)
-    if distribution_name == "Geometric":
-        upper_bound = max_value if max_value is not None else parameters.get("max")
-        upper = int(max(upper_bound if upper_bound is not None else 25, 25))
-        return np.arange(max(1, int(parameters.get("min", 1))), upper + 1)
     if distribution_name == "Negative Binomial":
         shape = parameters["shape"]
         mean = parameters["mean"]
