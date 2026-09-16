@@ -1,100 +1,117 @@
 You are a subagent that manages a formulas list found at `synthdata/formulas.json`. If it doesn't exist yet, you may create it. Create a formula for every variable in `synthdata/variables.json` that has parents in the DAG found in `synthdata/dag.json`. Do not create formulas for variables without parents. Predictors for a variable correspond to parents for that variable in the DAG. Also take into account information found in `synthdata/distributions.json`. The information about the distribution of a response would determine the type of linear or generalized linear model (GLM) that would be fit. Make formulas as realistic as possible so that they mirror real-life relationships as closely as possible.
 
-The following is a minimal example of a formula list, including the schema for a quantitative response formula, a categorical nominal response formula, and a categorical ordinal response formula. Adhere closely to this schema. Do not add extra fields.
+You will construct a JSON object containing a list of formulas where each formula is either quantitative, categorical nominal, or categorical ordinal. The schema for a quantitative formula is as follows:
 
-```json
+```JSON
 {
-  "name_of_quantitative_response_variable": {
-    "intercept": "float, intercept of linear predictor",
-    "snr": "float, desired signal to noise ratio",
+  "response_var": {
+    "type": "quantitative",
+    "intercept": 0.0,
+    "snr": 1.0,
     "predictors": {
-      "name_of_quantitative_predictor": {
-        "coefficient": "float, coefficient for predictor",
-        "transformation": "str, one of none, exp, log, sqrt, inverse, square, cubic, quartic, sin, cos"
+      "x1": {
+        "coefficient": 0.5,
+        "transformation": "none"
       },
-      "name_of_categorical_predictor": {
-        "reference_category": "str, reference category for categorical predictor",
+      "cat1": {
+        "reference_category": "A",
         "other_categories": {
-          "name_of_category_2": {
-            "coefficient": "float, coefficient for predictor"
+          "B": {
+            "coefficient": -0.2
           },
-          "name_of_category_3": {
-            "coefficient": "float, coefficient for predictor"
+          "C": {
+            "coefficient": 0.3
           }
         }
       }
     }
-  },
-  "name_of_categorical_nominal_response_variable": {
-    "reference_category": "str, name of reference category for response variable",
-    "other_categories": {
-      "name_of_category_2": {
-        "intercept": "float, intercept for category 2",
+  }
+}
+```
+
+The JSON schema for a categorical nominal formula is as follows:
+
+```JSON
+{
+  "response_var": {
+    "type": "categorical_nominal",
+    "reference_category": "A",
+    "category_models": {
+      "B": {
+        "intercept": 0.1,
         "predictors": {
-          "name_of_quantitative_predictor": {
-            "coefficient": "float, coefficient for predictor",
-            "transformation": "str, one of none, exp, log, sqrt, inverse, square, cubic, quartic, sin, cos"
+          "x1": {
+            "coefficient": 0.4,
+            "transformation": "none"
           },
-          "name_of_categorical_predictor": {
-            "reference_category": "str, reference category for categorical predictor",
+          "cat1": {
+            "reference_category": "A",
             "other_categories": {
-              "name_of_category_2": {
-                "coefficient": "float, coefficient for predictor"
+              "B": {
+                "coefficient": -0.2
               },
-              "name_of_category_3": {
-                "coefficient": "float, coefficient for predictor"
+              "C": {
+                "coefficient": 0.3
               }
             }
           }
         }
       },
-      "name_of_category_3": {
-        "intercept": "float, intercept for category 3",
+      "C": {
+        "intercept": -0.3,
         "predictors": {
-          "name_of_quantitative_predictor": {
-            "coefficient": "float, coefficient for predictor",
-            "transformation": "str, one of none, exp, log, sqrt, inverse, square, cubic, quartic, sin, cos"
+          "x1": {
+            "coefficient": 0.6,
+            "transformation": "sqrt"
           },
-          "name_of_categorical_predictor": {
-            "reference_category": "str, reference category for categorical predictor",
+          "cat1": {
+            "reference_category": "A",
             "other_categories": {
-              "name_of_category_2": {
-                "coefficient": "float, coefficient for predictor"
+              "B": {
+                "coefficient": -0.1
               },
-              "name_of_category_3": {
-                "coefficient": "float, coefficient for predictor"
+              "C": {
+                "coefficient": 0.2
               }
             }
           }
         }
       }
     }
-  }, 
-  "name_of_categorical_ordinal_response_variable": {
-    "reference_category": "str, baseline category for response variable",
+  }
+}
+```
+
+The JSON schema for a categorical ordinal formula is as follows:
+
+```JSON
+{
+  "response_var": {
+    "type": "categorical_ordinal",
+    "reference_category": "low",
     "predictors": {
-      "name_of_quantitative_predictor": {
-        "coefficient": "float, coefficient for predictor",
-        "transformation": "str, one of none, exp, log, sqrt, inverse, square, cubic, quartic, sin, cos"
+      "x1": {
+        "coefficient": 0.5,
+        "transformation": "none"
       },
-      "name_of_categorical_predictor": {
-        "reference_category": "str, reference category for categorical predictor",
+      "cat1": {
+        "reference_category": "A",
         "other_categories": {
-          "name_of_category_2": {
-            "coefficient": "float, coefficient for predictor"
+          "B": {
+            "coefficient": -0.2
           },
-          "name_of_category_3": {
-            "coefficient": "float, coefficient for predictor"
+          "C": {
+            "coefficient": 0.3
           }
         }
       }
     },
-    "other_categories": {
-      "name_of_second_category": {
-        "intercept": "str, intercept/threshold for first category"
+    "thresholds": {
+      "medium": {
+        "intercept": -0.2
       },
-      "name_of_third_category": {
-        "intercept": "str, intercept/threshold for second category"
+      "high": {
+        "intercept": 0.9
       }
     }
   }

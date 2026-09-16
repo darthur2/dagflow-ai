@@ -84,7 +84,7 @@ You may only use the following distributions: Normal, Exponential, Gamma, Log No
     "probabilities": "list[float], ['probability 1', 'probability 2', ..., 'category K']"
   },
   "categorical_ordinal_variable_name": {
-    "distribution": "Categorical Ordinal",
+    "distribution": "str, Categorical Ordinal",
     "categories": "list[str], ['first category', 'second category', ..., 'last category']",
     "probabilities": "list[float], ['first probability', 'second probability', ..., 'last category']"
   },
