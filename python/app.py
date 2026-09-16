@@ -645,7 +645,14 @@ def build_truncated_density_chart(distribution_name: str, parameters: dict, char
     max_value = max_value if max_value is not None else support_ceiling(distribution_name, dist)
 
     x = np.linspace(min_value, max_value, 400)
-    y = dist.pdf(x)
+    if distribution_name == "Beta":
+        scale = max_value - min_value
+        if scale <= 0:
+            return None
+        unit_x = (x - min_value) / scale
+        y = dist.pdf(unit_x) / scale
+    else:
+        y = dist.pdf(x)
     truncation_mass = dist.cdf(max_value) - dist.cdf(min_value)
     if truncation_mass <= 0:
         return None

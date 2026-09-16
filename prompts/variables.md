@@ -5,17 +5,17 @@ Variables may either be quantitative or categorical, each with their own schema.
 ```json
 {
   "quantitative_variable_name": {
+    "data_type": "str, Quantitative",
     "description": "str, short description of variable",
     "justification": "str, reason for including the variable",
-    "effect_type": "str, Fixed or Random",
     "measurement_level": "str, Interval or Ratio",
     "classification": "str, Discrete or Continuous",
     "skew": "str, Left, Right, or None"
   },
   "categorical_variable_name": {
+    "data_type": "str, Categorical",
     "description": "str, short description of variable",
     "justification": "str, reason for including the variable",
-    "effect_type": "str, Fixed or Random",
     "measurement_level": "str, Nominal or Ordinal"
   }
 }
