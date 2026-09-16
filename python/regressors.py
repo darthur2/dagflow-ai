@@ -1,12 +1,12 @@
 from dataclasses import dataclass, replace
 
 import numpy as np
-from scipy import optimize, special, stats
+from scipy import optimize, stats
 
 try:
-    from distributions import Geometric, NegativeBinomial, Normal, Poisson, Binomial
+    from distributions import Beta, Bernoulli, Binomial, Gamma, LogNormal, NegativeBinomial, Normal, Poisson
 except ImportError:  # pragma: no cover
-    from .distributions import Geometric, NegativeBinomial, Normal, Poisson, Binomial
+    from .distributions import Beta, Bernoulli, Binomial, Gamma, LogNormal, NegativeBinomial, Normal, Poisson
 
 
 def _validate_bounds(min_value, max_value) -> None:
@@ -74,6 +74,60 @@ def _transform_predictors(
     return np.column_stack(transformed_columns), transformed_names
 
 
+def _gamma_moments(mu: np.ndarray, shape: float) -> tuple[float, float, float]:
+    mean_mu = float(mu.mean())
+    mean_mu2 = float((mu**2).mean())
+    var_mu = mean_mu2 - mean_mu**2
+    e_var = mean_mu2 / shape
+    return mean_mu, var_mu, e_var
+
+
+def _lognormal_moments(log_mean: np.ndarray, log_standard_deviation: float) -> tuple[float, float, float]:
+    sigma2 = float(log_standard_deviation**2)
+    m1 = float(np.exp(log_mean).mean())
+    m2 = float(np.exp(2.0 * log_mean).mean())
+    mean_y = float(np.exp(0.5 * sigma2) * m1)
+    var_e = float(np.exp(sigma2) * (m2 - m1**2))
+    e_var = float(np.exp(sigma2) * (np.exp(sigma2) - 1.0) * m2)
+    return mean_y, var_e, e_var
+
+
+def _beta_moments(mu: np.ndarray, phi: float) -> tuple[float, float, float]:
+    mean_mu = float(mu.mean())
+    var_mu = float(mu.var())
+    e_var = float((mu * (1.0 - mu)).mean() / (phi + 1.0))
+    return mean_mu, var_mu, e_var
+
+
+def _bernoulli_moments(mu: np.ndarray) -> tuple[float, float, float]:
+    mean_mu = float(mu.mean())
+    var_mu = float(mu.var())
+    e_var = float((mu * (1.0 - mu)).mean())
+    return mean_mu, var_mu, e_var
+
+
+def _binomial_moments(mu: np.ndarray, n_trials: int) -> tuple[float, float, float]:
+    mean_mu = float((n_trials * mu).mean())
+    var_mu = float((n_trials * mu).var())
+    e_var = float((n_trials * mu * (1.0 - mu)).mean())
+    return mean_mu, var_mu, e_var
+
+
+def _poisson_moments(lam: np.ndarray) -> tuple[float, float, float]:
+    mean_lam = float(lam.mean())
+    var_lam = float(lam.var())
+    e_var = float(lam.mean())
+    return mean_lam, var_lam, e_var
+
+
+def _negative_binomial_moments(mu: np.ndarray, shape: float) -> tuple[float, float, float]:
+    mean_mu = float(mu.mean())
+    mean_mu2 = float((mu**2).mean())
+    var_mu = mean_mu2 - mean_mu**2
+    e_var = float(mean_mu + mean_mu2 / shape)
+    return mean_mu, var_mu, e_var
+
+
 @dataclass(frozen=True)
 class NoneRegressor:
     X: np.ndarray
@@ -105,15 +159,11 @@ class NoneRegressor:
         raise ValueError(f"Unsupported response_type: {self.response_type}")
 
 
-@dataclass(frozen=True)
-class TruncatedNormalRegressor:
-    target_mean: float
-    target_variance: float
-    target_snr: float
-    min: float
-    max: float
+@dataclass(frozen=True, kw_only=True)
+class NormalRegressor(Normal):
     X: np.ndarray
-    beta_1_init: np.ndarray
+    beta_1: np.ndarray
+    target_snr: float
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
@@ -123,95 +173,65 @@ class TruncatedNormalRegressor:
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
         X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
         if X.ndim != 2:
             raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.target_variance <= 0:
-            raise ValueError("target_variance must be positive")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
         if self.target_snr < 0:
             raise ValueError("target_snr must be non-negative")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "beta_1", beta_1)
         object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
-        return beta_0 + self.X @ (c * self.beta_1_init)
+    def calibrate(self) -> "NormalRegressor":
+        if self.truncated:
+            return self._calibrate_truncated()
+        return self._calibrate_untruncated()
 
-    def _row_moments(self, mean: np.ndarray, sigma: float) -> tuple[np.ndarray, np.ndarray]:
-        a = (self.min - mean) / sigma
-        b = (self.max - mean) / sigma
-        z = stats.norm.cdf(b) - stats.norm.cdf(a)
-        if np.any(z <= 0):
-            raise ValueError("truncation interval has zero probability mass")
-
-        alpha = stats.norm.pdf(a)
-        beta = stats.norm.pdf(b)
-        cond_mean = mean + sigma * (alpha - beta) / z
-        cond_var = sigma**2 * (1.0 + (a * alpha - b * beta) / z - ((alpha - beta) / z) ** 2)
-        return cond_mean, cond_var
-
-    def _conditional_moments(self, beta_0: float, c: float, sigma2: float) -> tuple[np.ndarray, np.ndarray]:
-        sigma = np.sqrt(sigma2)
-        eta = self._linear_predictor(beta_0, c)
-        return self._row_moments(eta, sigma)
-
-    def target_mean_value(self, beta_0: float, c: float, sigma2: float) -> float:
-        cond_mean, _ = self._conditional_moments(beta_0, c, sigma2)
-        return float(cond_mean.mean())
-
-    def target_variance_value(self, beta_0: float, c: float, sigma2: float) -> float:
-        cond_mean, cond_var = self._conditional_moments(beta_0, c, sigma2)
-        return float(cond_mean.var() + cond_var.mean())
-
-    def target_snr_value(self, beta_0: float, c: float, sigma2: float) -> float:
-        cond_mean, cond_var = self._conditional_moments(beta_0, c, sigma2)
-        within = float(cond_var.mean())
-        if within <= 0:
-            raise ValueError("Conditional variance is non-positive")
-        return float(cond_mean.var() / within)
-
-    def calibrate(self) -> "TruncatedNormalRegressor":
+    def _calibrate_untruncated(self) -> "NormalRegressor":
         if self.beta_0 is not None and self.c is not None and self.sigma2 is not None:
             return self
 
-        initial_beta_0 = float(self.target_mean)
-        initial_c = 1.0
-        initial_log_sigma2 = float(np.log(self.target_variance))
+        self._validate_truncation()
 
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, c, log_sigma2 = params
-            sigma2 = float(np.exp(log_sigma2))
-            try:
-                mean_residual = self.target_mean_value(beta_0, c, sigma2) - self.target_mean
-                variance_residual = self.target_variance_value(beta_0, c, sigma2) - self.target_variance
-                snr_residual = self.target_snr_value(beta_0, c, sigma2) - self.target_snr
-                return np.array([mean_residual, variance_residual, snr_residual], dtype=float)
-            except ValueError:
-                return np.array([1e6, 1e6, 1e6], dtype=float)
+        target_mean = self.get_mean()
+        target_variance = self.get_variance()
+        sigma2 = float(target_variance / (self.target_snr + 1.0))
+        if sigma2 <= 0:
+            raise ValueError("target_variance and target_snr must yield a positive sigma2")
 
-        result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0, initial_c, initial_log_sigma2], dtype=float),
-            bounds=([-np.inf, 0.0, -np.inf], [np.inf, np.inf, np.inf]),
-        )
+        x_mean = np.mean(self.X, axis=0)
+        x_cov = np.cov(self.X, rowvar=False, ddof=0)
+        if np.isscalar(x_cov):
+            x_cov = np.asarray([[float(x_cov)]], dtype=float)
+        else:
+            x_cov = np.asarray(x_cov, dtype=float)
+        if x_cov.ndim == 0:
+            x_cov = np.asarray([[float(x_cov)]], dtype=float)
+        elif x_cov.ndim == 1:
+            x_cov = np.diag(x_cov)
 
-        if not result.success:
-            raise ValueError(f"Unable to calibrate TruncatedNormalRegressor: {result.message}")
+        q = float((self.beta_1.reshape(1, -1) @ x_cov @ self.beta_1.reshape(-1, 1)).item())
+        if q == 0.0:
+            if self.target_snr > 0:
+                raise ValueError("Predictor variance is zero in the direction of beta_1; target_snr must be 0")
+            c = 0.0
+        else:
+            c = float(np.sqrt(self.target_snr * sigma2 / q))
 
-        beta_0, c, log_sigma2 = result.x
-        sigma2 = float(np.exp(log_sigma2))
-        return TruncatedNormalRegressor(
-            target_mean=self.target_mean,
-            target_variance=self.target_variance,
-            target_snr=self.target_snr,
+        beta_0 = float(target_mean - c * (x_mean @ self.beta_1))
+        return NormalRegressor(
+            mean=self.mean,
+            standard_deviation=self.standard_deviation,
             min=self.min,
             max=self.max,
+            truncated=self.truncated,
+            target_snr=self.target_snr,
             X=self.X,
-            beta_1_init=self.beta_1_init,
+            beta_1=self.beta_1,
             predictor_names=self.predictor_names,
             predictor_transformations=None,
             beta_0=float(beta_0),
@@ -219,1100 +239,738 @@ class TruncatedNormalRegressor:
             sigma2=sigma2,
         )
 
+    def _calibrate_truncated(self) -> "NormalRegressor":
+        raise NotImplementedError("NormalRegressor truncated calibration not yet implemented")
+
+    def _linear_predictor(self, beta_0: float, c: float) -> np.ndarray:
+        return beta_0 + self.X @ (c * self.beta_1)
+
     def sample(self, n: int) -> np.ndarray:
         if self.beta_0 is None or self.c is None or self.sigma2 is None:
-            raise ValueError("TruncatedNormalRegressor must be calibrated before sampling")
+            raise ValueError("NormalRegressor must be calibrated before sampling")
 
+        self._validate_truncation()
         sigma = np.sqrt(self.sigma2)
         eta = self._linear_predictor(self.beta_0, self.c)
         mean = np.repeat(eta, int(np.ceil(n / len(eta))))[:n]
         a = (self.min - mean) / sigma
         b = (self.max - mean) / sigma
-        samples = stats.truncnorm.rvs(a, b, loc=mean, scale=sigma, size=n)
-        return _as_1d_array(samples)
+        return _as_1d_array(stats.truncnorm.rvs(a, b, loc=mean, scale=sigma, size=n))
 
 
-@dataclass(frozen=True)
-class TruncatedExponentialRegressor:
-    target_mean: float
-    min: float
-    max: float
+@dataclass(frozen=True, kw_only=True)
+class GammaRegressor(Gamma):
     X: np.ndarray
-    beta_1_init: np.ndarray
+    beta_1: np.ndarray
+    target_snr: float
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
+    c: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
         X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
         if X.ndim != 2:
             raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.target_mean <= 0:
-            raise ValueError("target_mean must be positive")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
+        if self.target_snr < 0:
+            raise ValueError("target_snr must be non-negative")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "beta_1", beta_1)
         object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float) -> np.ndarray:
-        return beta_0 + self.X @ self.beta_1_init
+    def calibrate(self) -> "GammaRegressor":
+        if self.truncated:
+            return self._calibrate_truncated()
+        return self._calibrate_untruncated()
 
-    def _row_moments(self, beta_0: float) -> tuple[np.ndarray, np.ndarray]:
-        eta = self._linear_predictor(beta_0)
-        lam = np.exp(-eta)
-        alpha = 0.0
-        beta = 1000.0
-        z = np.exp(-lam * alpha) - np.exp(-lam * beta)
-        if np.any(z <= 0):
-            raise ValueError("truncation interval has zero probability mass")
+    def _mu(self, beta_0: float, c: float) -> np.ndarray:
+        return np.exp(beta_0 + self.X @ (c * self.beta_1))
 
-        exp_a = np.exp(-lam * alpha)
-        exp_b = np.exp(-lam * beta)
-        mean = (1.0 / lam) + (alpha * exp_a - beta * exp_b) / z
-        second_moment = (2.0 / (lam**2)) + (
-            (alpha**2) * exp_a - (beta**2) * exp_b - 2.0 * (alpha * exp_a - beta * exp_b) / lam
-        ) / z
-        var = second_moment - mean**2
-        return mean, var
-
-    def target_mean_value(self, beta_0: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0)
-        return float(cond_mean.mean())
-
-    def _feasible_initial_guess(self) -> float:
-        x_mean = np.mean(self.X @ self.beta_1_init)
-        return float(np.log(self.target_mean) - x_mean)
-
-    def calibrate(self) -> "TruncatedExponentialRegressor":
-        if self.beta_0 is not None:
+    def _calibrate_untruncated(self) -> "GammaRegressor":
+        if self.beta_0 is not None and self.c is not None:
             return self
 
-        initial_beta_0 = self._feasible_initial_guess()
+        self._validate_truncation()
 
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0 = float(params[0])
-            try:
-                return np.array([self.target_mean_value(beta_0) - self.target_mean], dtype=float)
-            except ValueError:
-                return np.array([1e6], dtype=float)
+        target_mean = self.get_mean()
+        target_variance = self.get_variance()
+        x_cov = np.cov(self.X, rowvar=False, ddof=0)
+        if np.isscalar(x_cov):
+            x_cov = np.asarray([[float(x_cov)]], dtype=float)
+        else:
+            x_cov = np.asarray(x_cov, dtype=float)
+        if x_cov.ndim == 0:
+            x_cov = np.asarray([[float(x_cov)]], dtype=float)
+        elif x_cov.ndim == 1:
+            x_cov = np.diag(x_cov)
+
+        beta_0_guess = float(np.log(max(target_mean, np.finfo(float).tiny)))
+        shape_guess = max(target_mean * target_mean / max(target_variance, np.finfo(float).tiny), 1e-6)
+        c_guess = 1.0
+
+        def moments(params: np.ndarray) -> np.ndarray:
+            beta_0, log_c, log_shape = params
+            c = float(np.exp(log_c))
+            shape = float(np.exp(log_shape))
+            mu = self._mu(beta_0, c)
+            mean_mu, var_mu, e_var = _gamma_moments(mu, shape)
+            mean_mu2 = float((mu**2).mean())
+            total_var = (1.0 + 1.0 / shape) * mean_mu2 - mean_mu**2
+            snr = np.inf if e_var == 0.0 else var_mu / e_var
+            return np.array(
+                [
+                    mean_mu - target_mean,
+                    total_var - target_variance,
+                    snr - self.target_snr,
+                ],
+                dtype=float,
+            )
 
         result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0], dtype=float),
-            bounds=([-np.inf], [np.inf]),
+            moments,
+            x0=np.array([beta_0_guess, np.log(c_guess), np.log(shape_guess)], dtype=float),
+            bounds=([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, np.inf]),
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate TruncatedExponentialRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate GammaRegressor: {result.message}")
 
-        return TruncatedExponentialRegressor(
-            target_mean=self.target_mean,
+        beta_0, log_c, log_shape = result.x
+        c = float(np.exp(log_c))
+        shape = float(np.exp(log_shape))
+        return GammaRegressor(
+            shape=shape,
+            rate=shape / float(np.exp(beta_0)),
             min=self.min,
             max=self.max,
+            truncated=self.truncated,
+            target_snr=self.target_snr,
             X=self.X,
-            beta_1_init=self.beta_1_init,
-            predictor_names=self.predictor_names,
-            predictor_transformations=None,
-            beta_0=float(result.x[0]),
-        )
-
-    def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None:
-            raise ValueError("TruncatedExponentialRegressor must be calibrated before sampling")
-
-        eta = self._linear_predictor(self.beta_0)
-        lam = np.exp(-np.repeat(eta, int(np.ceil(n / len(eta))))[:n])
-        samples = np.empty(n, dtype=float)
-        rng = np.random.default_rng()
-        for idx, current_lambda in enumerate(lam):
-            u = rng.random()
-            lower = np.exp(-current_lambda * 0.0)
-            upper = np.exp(-current_lambda * 1000.0)
-            samples[idx] = -np.log(lower - u * (lower - upper)) / current_lambda
-        return _as_1d_array(samples)
-
-
-@dataclass(frozen=True)
-class TruncatedGammaRegressor:
-    target_mean: float
-    target_variance: float
-    min: float
-    max: float
-    X: np.ndarray
-    beta_1_init: np.ndarray
-    predictor_names: list[str] | None = None
-    predictor_transformations: dict[str, str] | None = None
-    beta_0: float | None = None
-    shape: float | None = None
-
-    def __post_init__(self) -> None:
-        _validate_bounds(self.min, self.max)
-        X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
-        if X.ndim != 2:
-            raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.target_mean <= 0:
-            raise ValueError("target_mean must be positive")
-        if self.target_variance <= 0:
-            raise ValueError("target_variance must be positive")
-        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
-        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
-        object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
-        object.__setattr__(self, "predictor_names", predictor_names)
-
-    def _linear_predictor(self, beta_0: float) -> np.ndarray:
-        return beta_0 + self.X @ self.beta_1_init
-
-    def _row_moments(self, beta_0: float, shape: float) -> tuple[np.ndarray, np.ndarray]:
-        eta = self._linear_predictor(beta_0)
-        rate = np.exp(-eta)
-        a = shape
-        lower_scaled = rate * self.min
-        upper_scaled = rate * self.max
-        denom = special.gammainc(a, upper_scaled) - special.gammainc(a, lower_scaled)
-        if np.any(denom <= 0):
-            raise ValueError("truncation interval has zero probability mass")
-
-        mean = (special.gamma(a + 1.0) / (rate * special.gamma(a))) * (
-            (special.gammainc(a + 1.0, upper_scaled) - special.gammainc(a + 1.0, lower_scaled)) / denom
-        )
-        second_moment = (special.gamma(a + 2.0) / (rate**2 * special.gamma(a))) * (
-            (special.gammainc(a + 2.0, upper_scaled) - special.gammainc(a + 2.0, lower_scaled)) / denom
-        )
-        var = second_moment - mean**2
-        return np.asarray(mean, dtype=float), np.asarray(var, dtype=float)
-
-    def target_mean_value(self, beta_0: float, shape: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, shape)
-        return float(cond_mean.mean())
-
-    def target_variance_value(self, beta_0: float, shape: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, shape)
-        return float(cond_mean.var() + cond_var.mean())
-
-    def _feasible_initial_guess(self) -> tuple[float, float]:
-        x_mean = np.mean(self.X @ self.beta_1_init)
-        beta_0 = np.log(max(self.target_mean, np.finfo(float).tiny)) - x_mean
-        shape = max(self.target_mean**2 / max(self.target_variance, np.finfo(float).tiny), np.finfo(float).tiny)
-        return beta_0, shape
-
-    def calibrate(self) -> "TruncatedGammaRegressor":
-        if self.beta_0 is not None and self.shape is not None:
-            return self
-
-        initial_beta_0, initial_shape = self._feasible_initial_guess()
-
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, shape = params
-            try:
-                mean_residual = self.target_mean_value(beta_0, shape) - self.target_mean
-                variance_residual = self.target_variance_value(beta_0, shape) - self.target_variance
-                return np.array([mean_residual, variance_residual], dtype=float)
-            except ValueError:
-                return np.array([1e6, 1e6], dtype=float)
-
-        result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0, initial_shape], dtype=float),
-            bounds=([-np.inf, np.finfo(float).tiny], [np.inf, np.inf]),
-        )
-
-        if not result.success:
-            raise ValueError(f"Unable to calibrate TruncatedGammaRegressor: {result.message}")
-
-        beta_0, shape = result.x
-        return replace(self, beta_0=float(beta_0), shape=float(shape))
-
-    def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.shape is None:
-            raise ValueError("TruncatedGammaRegressor must be calibrated before sampling")
-
-        eta = self._linear_predictor(self.beta_0)
-        rate = np.exp(-np.repeat(eta, int(np.ceil(n / len(eta))))[:n])
-        samples = stats.gamma.rvs(a=self.shape, scale=1.0 / rate, size=n)
-        return _as_1d_array(samples)
-
-
-@dataclass(frozen=True)
-class TruncatedLogNormalRegressor:
-    target_mean: float
-    target_variance: float
-    min: float
-    max: float
-    X: np.ndarray
-    beta_1_init: np.ndarray
-    predictor_names: list[str] | None = None
-    predictor_transformations: dict[str, str] | None = None
-    beta_0: float | None = None
-    sigma2: float | None = None
-
-    def __post_init__(self) -> None:
-        _validate_bounds(self.min, self.max)
-        X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
-        if X.ndim != 2:
-            raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.target_mean <= 0:
-            raise ValueError("target_mean must be positive")
-        if self.target_variance <= 0:
-            raise ValueError("target_variance must be positive")
-        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
-        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
-        object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
-        object.__setattr__(self, "predictor_names", predictor_names)
-
-    def _linear_predictor(self, beta_0: float) -> np.ndarray:
-        return beta_0 + self.X @ self.beta_1_init
-
-    def _row_moments(self, beta_0: float, sigma2: float) -> tuple[np.ndarray, np.ndarray]:
-        eta = self._linear_predictor(beta_0)
-        sigma = np.sqrt(sigma2)
-        lower = np.log(self.min)
-        upper = np.log(self.max)
-        alpha = (lower - eta) / sigma
-        beta = (upper - eta) / sigma
-        denom = stats.norm.cdf(beta) - stats.norm.cdf(alpha)
-        if np.any(denom <= 0):
-            raise ValueError("truncation interval has zero probability mass")
-
-        mean = np.exp(eta + 0.5 * sigma2) * (
-            stats.norm.cdf(beta - sigma) - stats.norm.cdf(alpha - sigma)
-        ) / denom
-        second_moment = np.exp(2.0 * eta + 2.0 * sigma2) * (
-            stats.norm.cdf(beta - 2.0 * sigma) - stats.norm.cdf(alpha - 2.0 * sigma)
-        ) / denom
-        var = second_moment - mean**2
-        return mean, var
-
-    def target_mean_value(self, beta_0: float, sigma2: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, sigma2)
-        return float(cond_mean.mean())
-
-    def target_variance_value(self, beta_0: float, sigma2: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, sigma2)
-        return float(cond_mean.var() + cond_var.mean())
-
-    def _feasible_initial_guess(self) -> tuple[float, float]:
-        x_mean = np.mean(self.X @ self.beta_1_init)
-        beta_0 = np.log(self.target_mean) - x_mean
-        sigma2 = 0.5
-        return beta_0, sigma2
-
-    def calibrate(self) -> "TruncatedLogNormalRegressor":
-        if self.beta_0 is not None and self.sigma2 is not None:
-            return self
-
-        initial_beta_0, initial_sigma2 = self._feasible_initial_guess()
-
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, log_sigma2 = params
-            sigma2 = float(np.exp(log_sigma2))
-            try:
-                mean_residual = self.target_mean_value(beta_0, sigma2) - self.target_mean
-                variance_residual = self.target_variance_value(beta_0, sigma2) - self.target_variance
-                return np.array([mean_residual, variance_residual], dtype=float)
-            except ValueError:
-                return np.array([1e6, 1e6], dtype=float)
-
-        result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0, np.log(initial_sigma2)], dtype=float),
-            bounds=([-np.inf, -np.inf], [np.inf, np.inf]),
-        )
-
-        if not result.success:
-            raise ValueError(f"Unable to calibrate TruncatedLogNormalRegressor: {result.message}")
-
-        beta_0, log_sigma2 = result.x
-        sigma2 = float(np.exp(log_sigma2))
-        return TruncatedLogNormalRegressor(
-            target_mean=self.target_mean,
-            target_variance=self.target_variance,
-            min=self.min,
-            max=self.max,
-            X=self.X,
-            beta_1_init=self.beta_1_init,
+            beta_1=self.beta_1,
             predictor_names=self.predictor_names,
             predictor_transformations=None,
             beta_0=float(beta_0),
-            sigma2=sigma2,
+            c=c,
         )
 
-    def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.sigma2 is None:
-            raise ValueError("TruncatedLogNormalRegressor must be calibrated before sampling")
+    def _calibrate_truncated(self) -> "GammaRegressor":
+        raise NotImplementedError("GammaRegressor truncated calibration not yet implemented")
 
-        eta = self._linear_predictor(self.beta_0)
-        mean = np.repeat(eta, int(np.ceil(n / len(eta))))[:n]
-        dist = stats.lognorm(s=np.sqrt(self.sigma2), scale=np.exp(mean))
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None or self.c is None:
+            raise ValueError("GammaRegressor must be calibrated before sampling")
+
+        mu = np.repeat(self._mu(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        shape = self.rate * np.exp(self.beta_0)
+        scale = mu / shape
+        return _as_1d_array(stats.gamma.rvs(a=shape, scale=scale, size=n))
+
+
+@dataclass(frozen=True, kw_only=True)
+class LogNormalRegressor(LogNormal):
+    X: np.ndarray
+    beta_1: np.ndarray
+    target_snr: float
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
+    beta_0: float | None = None
+    c: float | None = None
+
+    def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
+        X = np.asarray(self.X, dtype=float)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
+        if self.target_snr < 0:
+            raise ValueError("target_snr must be non-negative")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1", beta_1)
+        object.__setattr__(self, "predictor_names", predictor_names)
+
+    def calibrate(self) -> "LogNormalRegressor":
+        if self.truncated:
+            return self._calibrate_truncated()
+        return self._calibrate_untruncated()
+
+    def _log_mean(self, beta_0: float, c: float) -> np.ndarray:
+        return beta_0 + self.X @ (c * self.beta_1)
+
+    def _calibrate_untruncated(self) -> "LogNormalRegressor":
+        if self.beta_0 is not None and self.c is not None:
+            return self
+
+        self._validate_truncation()
+
+        target_mean = self.get_mean()
+        target_variance = self.get_variance()
+        x_cov = np.cov(self.X, rowvar=False, ddof=0)
+        if np.isscalar(x_cov):
+            x_cov = np.asarray([[float(x_cov)]], dtype=float)
+        else:
+            x_cov = np.asarray(x_cov, dtype=float)
+        if x_cov.ndim == 0:
+            x_cov = np.asarray([[float(x_cov)]], dtype=float)
+        elif x_cov.ndim == 1:
+            x_cov = np.diag(x_cov)
+
+        beta_0_guess = float(np.log(max(target_mean, np.finfo(float).tiny)))
+        sigma_guess = 0.5
+        c_guess = 1.0
+
+        def moments(params: np.ndarray) -> np.ndarray:
+            beta_0, log_c, log_sigma = params
+            c = float(np.exp(log_c))
+            sigma = float(np.exp(log_sigma))
+            log_mean = self._log_mean(beta_0, c)
+            mean_y, var_e, e_var = _lognormal_moments(log_mean, sigma)
+            total_var = var_e + e_var
+            snr = np.inf if e_var == 0.0 else var_e / e_var
+            return np.array(
+                [
+                    mean_y - target_mean,
+                    total_var - target_variance,
+                    snr - self.target_snr,
+                ],
+                dtype=float,
+            )
+
+        result = optimize.least_squares(
+            moments,
+            x0=np.array([beta_0_guess, np.log(c_guess), np.log(sigma_guess)], dtype=float),
+            bounds=([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, np.inf]),
+        )
+
+        if not result.success:
+            raise ValueError(f"Unable to calibrate LogNormalRegressor: {result.message}")
+
+        beta_0, log_c, log_sigma = result.x
+        c = float(np.exp(log_c))
+        sigma = float(np.exp(log_sigma))
+        return LogNormalRegressor(
+            log_mean=float(beta_0),
+            log_standard_deviation=sigma,
+            min=self.min,
+            max=self.max,
+            truncated=self.truncated,
+            target_snr=self.target_snr,
+            X=self.X,
+            beta_1=self.beta_1,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=float(beta_0),
+            c=c,
+        )
+
+    def _calibrate_truncated(self) -> "LogNormalRegressor":
+        raise NotImplementedError("LogNormalRegressor truncated calibration not yet implemented")
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None or self.c is None:
+            raise ValueError("LogNormalRegressor must be calibrated before sampling")
+
+        log_mean = np.repeat(self._log_mean(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(log_mean))
         lower = dist.cdf(self.min)
         upper = dist.cdf(self.max)
         if np.any(lower >= upper):
             raise ValueError("truncation interval has zero probability mass")
-
         uniforms = np.random.uniform(lower, upper, size=n)
-        samples = dist.ppf(uniforms)
-        return _as_1d_array(samples)
+        return _as_1d_array(dist.ppf(uniforms))
 
 
-@dataclass(frozen=True)
-class BetaRegressor:
-    target_mean: float
-    target_variance: float
-    min: float
-    max: float
+@dataclass(frozen=True, kw_only=True)
+class BetaRegressor(Beta):
     X: np.ndarray
-    beta_1_init: np.ndarray
+    beta_1: np.ndarray
+    target_snr: float
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
+    c: float | None = None
     phi: float | None = None
+    truncated: bool = False
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
         X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
         if X.ndim != 2:
             raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if not self.min < self.target_mean < self.max:
-            raise ValueError("target_mean must be between min and max")
-        if self.target_variance <= 0:
-            raise ValueError("target_variance must be positive")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
+        if self.target_snr < 0:
+            raise ValueError("target_snr must be non-negative")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "beta_1", beta_1)
         object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float) -> np.ndarray:
-        return beta_0 + self.X @ self.beta_1_init
-
-    def _mu(self, beta_0: float) -> np.ndarray:
-        eta = self._linear_predictor(beta_0)
-        return 1.0 / (1.0 + np.exp(-eta))
-
-    def _row_moments(self, beta_0: float, phi: float) -> tuple[np.ndarray, np.ndarray]:
-        mu = self._mu(beta_0)
-        scale = self.max - self.min
-        mean = self.min + scale * mu
-        var = (scale**2) * mu * (1.0 - mu) / (1.0 + phi)
-        return mean, var
-
-    def target_mean_value(self, beta_0: float, phi: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, phi)
-        return float(cond_mean.mean())
-
-    def target_variance_value(self, beta_0: float, phi: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, phi)
-        return float(cond_mean.var() + cond_var.mean())
-
-    def _feasible_initial_guess(self) -> tuple[float, float]:
-        mu = np.clip((self.target_mean - self.min) / (self.max - self.min), 1e-3, 1.0 - 1e-3)
-        x_mean = np.mean(self.X @ self.beta_1_init)
-        beta_0 = np.log(mu / (1.0 - mu)) - x_mean
-        phi = max((self.max - self.min) ** 2 * mu * (1.0 - mu) / max(self.target_variance, np.finfo(float).tiny) - 1.0, 1e-3)
-        return beta_0, phi
-
     def calibrate(self) -> "BetaRegressor":
-        if self.beta_0 is not None and self.phi is not None:
+        return self._calibrate_truncated() if self.truncated else self._calibrate_untruncated()
+
+    def _mu(self, beta_0: float, c: float) -> np.ndarray:
+        return 1.0 / (1.0 + np.exp(-(beta_0 + self.X @ (c * self.beta_1))))
+
+    def _calibrate_untruncated(self) -> "BetaRegressor":
+        if self.beta_0 is not None and self.c is not None and self.phi is not None:
             return self
 
-        initial_beta_0, initial_phi = self._feasible_initial_guess()
+        target_mean = self.get_unit_mean()
+        target_variance = self.get_unit_variance()
 
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, log_phi = params
+        beta_0_guess = float(np.log(target_mean / max(1.0 - target_mean, np.finfo(float).tiny)))
+        c_guess = 1.0
+        phi_guess = max(target_mean * (1.0 - target_mean) / max(target_variance, np.finfo(float).tiny) - 1.0, 1e-6)
+
+        def moments(params: np.ndarray) -> np.ndarray:
+            beta_0, log_c, log_phi = params
+            c = float(np.exp(log_c))
             phi = float(np.exp(log_phi))
-            try:
-                mean_residual = self.target_mean_value(beta_0, phi) - self.target_mean
-                variance_residual = self.target_variance_value(beta_0, phi) - self.target_variance
-                return np.array([mean_residual, variance_residual], dtype=float)
-            except ValueError:
-                return np.array([1e6, 1e6], dtype=float)
+            mu = self._mu(beta_0, c)
+            mean_mu, var_mu, e_var = _beta_moments(mu, phi)
+            total_var = var_mu + e_var
+            snr = np.inf if e_var == 0.0 else var_mu / e_var
+            return np.array(
+                [
+                    mean_mu - target_mean,
+                    total_var - target_variance,
+                    snr - self.target_snr,
+                ],
+                dtype=float,
+            )
 
         result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0, np.log(initial_phi)], dtype=float),
-            bounds=([-np.inf, -np.inf], [np.inf, np.inf]),
+            moments,
+            x0=np.array([beta_0_guess, np.log(c_guess), np.log(phi_guess)], dtype=float),
+            bounds=([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, np.inf]),
         )
 
         if not result.success:
             raise ValueError(f"Unable to calibrate BetaRegressor: {result.message}")
 
-        beta_0, log_phi = result.x
-        phi = float(np.exp(log_phi))
+        beta_0, log_c, log_phi = result.x
         return BetaRegressor(
-            target_mean=self.target_mean,
-            target_variance=self.target_variance,
+            shape_1=self.shape_1,
+            shape_2=self.shape_2,
             min=self.min,
             max=self.max,
             X=self.X,
-            beta_1_init=self.beta_1_init,
+            beta_1=self.beta_1,
             predictor_names=self.predictor_names,
             predictor_transformations=None,
             beta_0=float(beta_0),
-            phi=phi,
+            c=float(np.exp(log_c)),
+            phi=float(np.exp(log_phi)),
+            target_snr=self.target_snr,
         )
 
+    def _calibrate_truncated(self) -> "BetaRegressor":
+        raise NotImplementedError("BetaRegressor truncated calibration not yet implemented")
+
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.phi is None:
+        if self.beta_0 is None or self.c is None or self.phi is None:
             raise ValueError("BetaRegressor must be calibrated before sampling")
 
-        mu = np.repeat(self._mu(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
-        samples = self.min + (self.max - self.min) * stats.beta.rvs(self.phi * mu, self.phi * (1.0 - mu), size=n)
-        return _as_1d_array(samples)
+        mu = np.repeat(self._mu(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        alpha = self.phi * mu
+        beta_param = self.phi * (1.0 - mu)
+        samples = stats.beta.rvs(alpha, beta_param, size=n)
+        return _as_1d_array(self.min + (self.max - self.min) * samples)
 
 
-@dataclass(frozen=True)
-class UniformRegressor:
+@dataclass(frozen=True, kw_only=True)
+class BernoulliRegressor(Bernoulli):
+    X: np.ndarray
+    beta_1: np.ndarray
     target_snr: float
-    X: np.ndarray
-    beta_1_init: np.ndarray
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
-    min: float = -10.0
-    max: float = 10.0
-    latent_regressor: TruncatedNormalRegressor | None = None
-
-    def __post_init__(self) -> None:
-        _validate_bounds(self.min, self.max)
-        X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
-        if X.ndim != 2:
-            raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.target_snr <= 0:
-            raise ValueError("target_snr must be positive")
-        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
-        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
-        object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
-        object.__setattr__(self, "predictor_names", predictor_names)
-
-    def calibrate(self) -> "UniformRegressor":
-        if self.latent_regressor is not None:
-            return self
-
-        latent_regressor = TruncatedNormalRegressor(
-            target_mean=0.0,
-            target_variance=1.0,
-            min=-10.0,
-            max=10.0,
-            X=self.X,
-            beta_1_init=self.beta_1_init,
-            target_snr=self.target_snr,
-        ).calibrate()
-        return replace(self, latent_regressor=latent_regressor)
-
-    def sample(self, n: int) -> np.ndarray:
-        if self.latent_regressor is None:
-            raise ValueError("UniformRegressor must be calibrated before sampling")
-
-        latent_samples = self.latent_regressor.sample(n)
-        uniforms = stats.norm.cdf(latent_samples)
-        return _as_1d_array(self.min + (self.max - self.min) * uniforms)
-
-
-@dataclass(frozen=True)
-class DiscreteUniformRegressor:
-    target_snr: float
-    X: np.ndarray
-    beta_1_init: np.ndarray
-    predictor_names: list[str] | None = None
-    predictor_transformations: dict[str, str] | None = None
-    min: int = 0
-    max: int = 10
-    latent_regressor: TruncatedNormalRegressor | None = None
-
-    def __post_init__(self) -> None:
-        _validate_bounds(self.min, self.max)
-        X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
-        if X.ndim != 2:
-            raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.target_snr <= 0:
-            raise ValueError("target_snr must be positive")
-        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
-        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
-        object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
-        object.__setattr__(self, "predictor_names", predictor_names)
-
-    def calibrate(self) -> "DiscreteUniformRegressor":
-        if self.latent_regressor is not None:
-            return self
-
-        latent_regressor = TruncatedNormalRegressor(
-            target_mean=0.0,
-            target_variance=1.0,
-            min=-10.0,
-            max=10.0,
-            X=self.X,
-            beta_1_init=self.beta_1_init,
-            target_snr=self.target_snr,
-        ).calibrate()
-        return replace(self, latent_regressor=latent_regressor)
-
-    def sample(self, n: int) -> np.ndarray:
-        if self.latent_regressor is None:
-            raise ValueError("DiscreteUniformRegressor must be calibrated before sampling")
-
-        samples = self.latent_regressor.sample(n)
-        support = np.arange(self.min, self.max + 1, dtype=int)
-        if support.size == 0:
-            raise ValueError("DiscreteUniformRegressor support must not be empty")
-
-        ranks = stats.norm.cdf(samples)
-        indices = np.minimum((ranks * support.size).astype(int), support.size - 1)
-        return _as_1d_array(support[indices])
-
-
-@dataclass(frozen=True)
-class BernoulliRegressor:
-    target_mean: float
-    X: np.ndarray
-    beta_1_init: np.ndarray
-    predictor_names: list[str] | None = None
-    predictor_transformations: dict[str, str] | None = None
-    min: float = 0.0
-    max: float = 1.0
     beta_0: float | None = None
+    c: float | None = None
 
     def __post_init__(self) -> None:
         X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
         if X.ndim != 2:
             raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if not 0.0 < self.target_mean < 1.0:
-            raise ValueError("target_mean must be in (0, 1)")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
+        if self.target_snr < 0:
+            raise ValueError("target_snr must be non-negative")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "beta_1", beta_1)
         object.__setattr__(self, "predictor_names", predictor_names)
-
-    def _linear_predictor(self, beta_0: float) -> np.ndarray:
-        return beta_0 + self.X @ self.beta_1_init
-
-    def _probability(self, beta_0: float) -> np.ndarray:
-        eta = self._linear_predictor(beta_0)
-        return 1.0 / (1.0 + np.exp(-eta))
-
-    def target_mean_value(self, beta_0: float) -> float:
-        return float(self._probability(beta_0).mean())
-
-    def _feasible_initial_guess(self) -> float:
-        x_mean = np.mean(self.X @ self.beta_1_init)
-        beta_0 = np.log(self.target_mean / (1.0 - self.target_mean)) - x_mean
-        return beta_0
 
     def calibrate(self) -> "BernoulliRegressor":
-        if self.beta_0 is not None:
+        return self._calibrate_untruncated()
+
+    def _mu(self, beta_0: float, c: float) -> np.ndarray:
+        return 1.0 / (1.0 + np.exp(-(beta_0 + self.X @ (c * self.beta_1))))
+
+    def _calibrate_untruncated(self) -> "BernoulliRegressor":
+        if self.beta_0 is not None and self.c is not None:
             return self
 
-        initial_beta_0 = self._feasible_initial_guess()
+        target_mean = self.success_prob
+        beta_0_guess = float(np.log(target_mean / max(1.0 - target_mean, np.finfo(float).tiny)))
+        c_guess = 1.0
 
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0 = float(params[0])
-            try:
-                return np.array([self.target_mean_value(beta_0) - self.target_mean], dtype=float)
-            except ValueError:
-                return np.array([1e6], dtype=float)
+        def moments(params: np.ndarray) -> np.ndarray:
+            beta_0, log_c = params
+            c = float(np.exp(log_c))
+            mu = self._mu(beta_0, c)
+            mean_mu, var_mu, e_var = _bernoulli_moments(mu)
+            snr = np.inf if e_var == 0.0 else var_mu / e_var
+            return np.array([mean_mu - target_mean, snr - self.target_snr], dtype=float)
 
         result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0], dtype=float),
-            bounds=([-np.inf], [np.inf]),
+            moments,
+            x0=np.array([beta_0_guess, np.log(c_guess)], dtype=float),
+            bounds=([-np.inf, -np.inf], [np.inf, np.inf]),
         )
 
         if not result.success:
             raise ValueError(f"Unable to calibrate BernoulliRegressor: {result.message}")
 
+        beta_0, log_c = result.x
         return BernoulliRegressor(
-            target_mean=self.target_mean,
+            success_prob=self.success_prob,
             X=self.X,
-            beta_1_init=self.beta_1_init,
+            beta_1=self.beta_1,
             predictor_names=self.predictor_names,
             predictor_transformations=None,
-            min=self.min,
-            max=self.max,
-            beta_0=float(result.x[0]),
+            beta_0=float(beta_0),
+            c=float(np.exp(log_c)),
+            target_snr=self.target_snr,
         )
 
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None:
+        if self.beta_0 is None or self.c is None:
             raise ValueError("BernoulliRegressor must be calibrated before sampling")
 
-        p = np.repeat(self._probability(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
-        samples = stats.bernoulli.rvs(p, size=n)
+        mu = np.repeat(self._mu(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        return _as_1d_array(stats.bernoulli.rvs(mu, size=n))
+
+
+@dataclass(frozen=True, kw_only=True)
+class BinomialRegressor(Binomial):
+    success_prob: float
+    X: np.ndarray
+    beta_1: np.ndarray
+    target_snr: float
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
+    beta_0: float | None = None
+    c: float | None = None
+
+    def __post_init__(self) -> None:
+        _validate_bounds(self.min, self.max)
+        X = np.asarray(self.X, dtype=float)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
+        if self.target_snr < 0:
+            raise ValueError("target_snr must be non-negative")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1", beta_1)
+        object.__setattr__(self, "predictor_names", predictor_names)
+
+    def calibrate(self) -> "BinomialRegressor":
+        return self._calibrate_truncated() if self.truncated else self._calibrate_untruncated()
+
+    def _mu(self, beta_0: float, c: float) -> np.ndarray:
+        return 1.0 / (1.0 + np.exp(-(beta_0 + self.X @ (c * self.beta_1))))
+
+    def _calibrate_untruncated(self) -> "BinomialRegressor":
+        if self.beta_0 is not None and self.c is not None:
+            return self
+
+        target_mean = self.get_mean()
+
+        mean_prob = np.clip(target_mean / self.n_trials, 1e-6, 1.0 - 1e-6)
+        beta_0_guess = float(np.log(mean_prob / (1.0 - mean_prob)))
+        c_guess = 1.0
+
+        def moments(params: np.ndarray) -> np.ndarray:
+            beta_0, log_c = params
+            c = float(np.exp(log_c))
+            mu = self._mu(beta_0, c)
+            mean_y, var_y, e_var = _binomial_moments(mu, self.n_trials)
+            snr = np.inf if e_var == 0.0 else var_y / e_var
+            return np.array(
+                [
+                    mean_y - target_mean,
+                    snr - self.target_snr,
+                ],
+                dtype=float,
+            )
+
+        result = optimize.least_squares(
+            moments,
+            x0=np.array([beta_0_guess, np.log(c_guess)], dtype=float),
+            bounds=([-np.inf, -np.inf], [np.inf, np.inf]),
+        )
+
+        if not result.success:
+            raise ValueError(f"Unable to calibrate BinomialRegressor: {result.message}")
+
+        beta_0, log_c = result.x
+        return BinomialRegressor(
+            success_prob=self.success_prob,
+            n_trials=self.n_trials,
+            min=self.min,
+            max=self.max,
+            X=self.X,
+            beta_1=self.beta_1,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=float(beta_0),
+            c=float(np.exp(log_c)),
+            target_snr=self.target_snr,
+            truncated=self.truncated,
+        )
+
+    def _calibrate_truncated(self) -> "BinomialRegressor":
+        raise NotImplementedError("BinomialRegressor truncated calibration not yet implemented")
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None or self.c is None:
+            raise ValueError("BinomialRegressor must be calibrated before sampling")
+
+        mu = np.repeat(self._mu(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        samples = np.empty(n, dtype=float)
+        rng = np.random.default_rng()
+        for idx, p in enumerate(mu):
+            dist = stats.binom(self.n_trials, p)
+            lower = dist.cdf(self.min - 1)
+            upper = dist.cdf(self.max)
+            if lower >= upper:
+                raise ValueError("truncation interval has zero probability mass")
+            samples[idx] = dist.ppf(rng.uniform(lower, upper))
         return _as_1d_array(samples)
 
 
-@dataclass(frozen=True)
-class TruncatedBinomialRegressor:
-    target_mean: float
-    n_trials: int
+@dataclass(frozen=True, kw_only=True)
+class PoissonRegressor(Poisson):
     X: np.ndarray
-    beta_1_init: np.ndarray
-    min: int
-    max: int
+    beta_1: np.ndarray
+    target_snr: float
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
-    _support: np.ndarray | None = None
+    c: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
         X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
         if X.ndim != 2:
             raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.n_trials < 1:
-            raise ValueError("n_trials must be >= 1")
-        if self.min < 0 or self.max > self.n_trials:
-            raise ValueError("min and max must lie within [0, n_trials]")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
+        if self.target_snr < 0:
+            raise ValueError("target_snr must be non-negative")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "beta_1", beta_1)
         object.__setattr__(self, "predictor_names", predictor_names)
-        object.__setattr__(self, "_support", np.arange(self.min, self.max + 1, dtype=float))
 
-    def _linear_predictor(self, beta_0: float) -> np.ndarray:
-        return beta_0 + self.X @ self.beta_1_init
+    def calibrate(self) -> "PoissonRegressor":
+        return self._calibrate_truncated() if self.truncated else self._calibrate_untruncated()
 
-    def _probability(self, beta_0: float) -> np.ndarray:
-        eta = self._linear_predictor(beta_0)
-        return 1.0 / (1.0 + np.exp(-eta))
+    def _lambda(self, beta_0: float, c: float) -> np.ndarray:
+        return np.exp(beta_0 + self.X @ (c * self.beta_1))
 
-    def _row_moments(self, beta_0: float) -> tuple[np.ndarray, np.ndarray]:
-        p = self._probability(beta_0)
-        support = self._support[None, :]
-        p_matrix = p[:, None]
-        pmf = stats.binom.pmf(support, self.n_trials, p_matrix)
-        pmf_sum = np.sum(pmf, axis=1, keepdims=True)
-        lower = stats.binom.cdf(self.min - 1, self.n_trials, p)
-        upper = stats.binom.cdf(self.max, self.n_trials, p)
-        if np.any(lower >= upper) or np.any(pmf_sum <= 0):
-            raise ValueError("truncation interval has zero probability mass")
-
-        pmf = pmf / pmf_sum
-        cond_mean = np.sum(support * pmf, axis=1)
-        cond_second = np.sum((support**2) * pmf, axis=1)
-        cond_var = cond_second - cond_mean**2
-        return cond_mean, cond_var
-
-    def target_mean_value(self, beta_0: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0)
-        return float(cond_mean.mean())
-
-    def _feasible_initial_guess(self) -> float:
-        mean_prob = np.clip(self.target_mean / self.n_trials, 1e-3, 1.0 - 1e-3)
-        x_mean = np.mean(self.X @ self.beta_1_init)
-        return float(np.log(mean_prob / (1.0 - mean_prob)) - x_mean)
-
-    def calibrate(self) -> "TruncatedBinomialRegressor":
-        if self.beta_0 is not None:
+    def _calibrate_untruncated(self) -> "PoissonRegressor":
+        if self.beta_0 is not None and self.c is not None:
             return self
 
-        initial_beta_0 = self._feasible_initial_guess()
+        target_mean = self.get_mean()
+        mean_rate = max(target_mean, np.finfo(float).tiny)
+        beta_0_guess = float(np.log(mean_rate))
+        c_guess = 1.0
 
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0 = float(params[0])
-            try:
-                return np.array([self.target_mean_value(beta_0) - self.target_mean], dtype=float)
-            except ValueError:
-                return np.array([1e6], dtype=float)
+        def moments(params: np.ndarray) -> np.ndarray:
+            beta_0, log_c = params
+            c = float(np.exp(log_c))
+            lam = self._lambda(beta_0, c)
+            mean_lam, var_lam, e_var = _poisson_moments(lam)
+            snr = np.inf if e_var == 0.0 else var_lam / e_var
+            return np.array([
+                mean_lam - target_mean,
+                snr - self.target_snr,
+            ], dtype=float)
 
         result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0], dtype=float),
-            bounds=([-np.inf], [np.inf]),
+            moments,
+            x0=np.array([beta_0_guess, np.log(c_guess)], dtype=float),
+            bounds=([-np.inf, -np.inf], [np.inf, np.inf]),
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate TruncatedBinomialRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate PoissonRegressor: {result.message}")
 
-        return TruncatedBinomialRegressor(
-            target_mean=self.target_mean,
-            n_trials=self.n_trials,
-            X=self.X,
-            beta_1_init=self.beta_1_init,
+        beta_0, log_c = result.x
+        return PoissonRegressor(
+            rate=self.rate,
             min=self.min,
             max=self.max,
-            predictor_names=self.predictor_names,
-            predictor_transformations=None,
-            beta_0=float(result.x[0]),
-        )
-
-    def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None:
-            raise ValueError("TruncatedBinomialRegressor must be calibrated before sampling")
-
-        p = np.repeat(self._probability(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
-        samples = np.empty(n, dtype=float)
-        rng = np.random.default_rng()
-        for idx, current_p in enumerate(p):
-            dist = stats.binom(self.n_trials, current_p)
-            lower = dist.cdf(self.min - 1)
-            upper = dist.cdf(self.max)
-            u = rng.uniform(lower, upper)
-            samples[idx] = dist.ppf(u)
-        return _as_1d_array(np.clip(samples, self.min, self.max))
-
-
-@dataclass(frozen=True)
-class TruncatedPoissonRegressor:
-    target_mean: float
-    X: np.ndarray
-    beta_1_init: np.ndarray
-    min: int
-    max: int
-    predictor_names: list[str] | None = None
-    predictor_transformations: dict[str, str] | None = None
-    beta_0: float | None = None
-    _support: np.ndarray | None = None
-
-    def __post_init__(self) -> None:
-        _validate_bounds(self.min, self.max)
-        X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
-        if X.ndim != 2:
-            raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.min < 0:
-            raise ValueError("min must be >= 0")
-        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
-        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
-        object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
-        object.__setattr__(self, "predictor_names", predictor_names)
-        object.__setattr__(self, "_support", np.arange(self.min, self.max + 1, dtype=float))
-
-    def _linear_predictor(self, beta_0: float) -> np.ndarray:
-        return beta_0 + self.X @ self.beta_1_init
-
-    def _rate(self, beta_0: float) -> np.ndarray:
-        return np.exp(self._linear_predictor(beta_0))
-
-    def _row_moments(self, beta_0: float) -> tuple[np.ndarray, np.ndarray]:
-        rates = self._rate(beta_0)
-        support = self._support[None, :]
-        rate_matrix = rates[:, None]
-        pmf = stats.poisson.pmf(support, rate_matrix)
-        pmf_sum = np.sum(pmf, axis=1, keepdims=True)
-        lower = stats.poisson.cdf(self.min - 1, rates)
-        upper = stats.poisson.cdf(self.max, rates)
-        if np.any(lower >= upper) or np.any(pmf_sum <= 0):
-            raise ValueError("truncation interval has zero probability mass")
-
-        pmf = pmf / pmf_sum
-        cond_mean = np.sum(support * pmf, axis=1)
-        cond_second = np.sum((support**2) * pmf, axis=1)
-        cond_var = cond_second - cond_mean**2
-        return cond_mean, cond_var
-
-    def target_mean_value(self, beta_0: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0)
-        return float(cond_mean.mean())
-
-    def _feasible_initial_guess(self) -> float:
-        return float(np.log(max(self.target_mean, 1e-6)))
-
-    def calibrate(self) -> "TruncatedPoissonRegressor":
-        if self.beta_0 is not None:
-            return self
-
-        initial_beta_0 = self._feasible_initial_guess()
-
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0 = float(params[0])
-            try:
-                mean_residual = self.target_mean_value(beta_0) - self.target_mean
-                return np.array([mean_residual], dtype=float)
-            except ValueError:
-                return np.array([1e6], dtype=float)
-
-        result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0], dtype=float),
-            bounds=([-np.inf], [np.inf]),
-        )
-
-        if not result.success:
-            raise ValueError(f"Unable to calibrate TruncatedPoissonRegressor: {result.message}")
-
-        return TruncatedPoissonRegressor(
-            target_mean=self.target_mean,
+            truncated=self.truncated,
             X=self.X,
-            beta_1_init=self.beta_1_init,
-            min=self.min,
-            max=self.max,
+            beta_1=self.beta_1,
             predictor_names=self.predictor_names,
             predictor_transformations=None,
-            beta_0=float(result.x[0]),
+            beta_0=float(beta_0),
+            c=float(np.exp(log_c)),
+            target_snr=self.target_snr,
         )
 
-    def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None:
-            raise ValueError("TruncatedPoissonRegressor must be calibrated before sampling")
+    def _calibrate_truncated(self) -> "PoissonRegressor":
+        raise NotImplementedError("PoissonRegressor truncated calibration not yet implemented")
 
-        lam = np.repeat(self._rate(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None or self.c is None:
+            raise ValueError("PoissonRegressor must be calibrated before sampling")
+
+        lam = np.repeat(self._lambda(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
         samples = np.empty(n, dtype=float)
         rng = np.random.default_rng()
         for idx, current_lam in enumerate(lam):
             dist = stats.poisson(current_lam)
             lower = dist.cdf(self.min - 1)
             upper = dist.cdf(self.max)
-            u = rng.uniform(lower, upper)
-            samples[idx] = dist.ppf(u)
-        return _as_1d_array(np.clip(samples, self.min, self.max))
+            if lower >= upper:
+                raise ValueError("truncation interval has zero probability mass")
+            samples[idx] = dist.ppf(rng.uniform(lower, upper))
+        return _as_1d_array(samples)
 
 
-@dataclass(frozen=True)
-class TruncatedGeometricRegressor:
-    target_mean: float
+@dataclass(frozen=True, kw_only=True)
+class NegativeBinomialRegressor(NegativeBinomial):
     X: np.ndarray
-    beta_1_init: np.ndarray
+    beta_1: np.ndarray
+    target_snr: float
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
-    min: int = 0
-    max: int = 20
     beta_0: float | None = None
+    c: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
         X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
         if X.ndim != 2:
             raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.min < 0:
-            raise ValueError("min must be >= 0")
-        if self.target_mean <= 0:
-            raise ValueError("target_mean must be positive")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
+        if self.target_snr < 0:
+            raise ValueError("target_snr must be non-negative")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
+        object.__setattr__(self, "beta_1", beta_1)
         object.__setattr__(self, "predictor_names", predictor_names)
 
-    def _linear_predictor(self, beta_0: float) -> np.ndarray:
-        return beta_0 + self.X @ self.beta_1_init
+    def calibrate(self) -> "NegativeBinomialRegressor":
+        return self._calibrate_truncated() if self.truncated else self._calibrate_untruncated()
 
-    def _probability(self, beta_0: float) -> np.ndarray:
-        eta = self._linear_predictor(beta_0)
-        return 1.0 / (1.0 + np.exp(-eta))
+    def _mu(self, beta_0: float, c: float) -> np.ndarray:
+        return np.exp(beta_0 + self.X @ (c * self.beta_1))
 
-    def _row_moments(self, beta_0: float) -> tuple[np.ndarray, np.ndarray]:
-        probs = self._probability(beta_0)
-        support = np.arange(self.min, self.max + 1, dtype=float)[None, :]
-        prob_matrix = probs[:, None]
-        pmf = stats.nbinom.pmf(support, 1, prob_matrix)
-        pmf_sum = np.sum(pmf, axis=1, keepdims=True)
-        lower = stats.nbinom.cdf(self.min - 1, 1, probs)
-        upper = stats.nbinom.cdf(self.max, 1, probs)
-        if np.any(lower >= upper) or np.any(pmf_sum <= 0):
-            raise ValueError("truncation interval has zero probability mass")
-
-        pmf = pmf / pmf_sum
-        cond_mean = np.sum(support * pmf, axis=1)
-        cond_second = np.sum((support**2) * pmf, axis=1)
-        cond_var = cond_second - cond_mean**2
-        return cond_mean, cond_var
-
-    def target_mean_value(self, beta_0: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0)
-        return float(cond_mean.mean())
-
-    def _feasible_initial_guess(self) -> float:
-        p = np.clip(1.0 / (1.0 + self.target_mean), 1e-4, 1.0 - 1e-4)
-        x_mean = np.mean(self.X @ self.beta_1_init)
-        return float(np.log(p / (1.0 - p)) - x_mean)
-
-    def calibrate(self) -> "TruncatedGeometricRegressor":
-        if self.beta_0 is not None:
+    def _calibrate_untruncated(self) -> "NegativeBinomialRegressor":
+        if self.beta_0 is not None and self.c is not None:
             return self
 
-        initial_beta_0 = self._feasible_initial_guess()
+        target_mean = self.get_mean()
+        target_variance = self.get_variance()
 
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0 = float(params[0])
-            try:
-                mean_residual = self.target_mean_value(beta_0) - self.target_mean
-                return np.array([mean_residual], dtype=float)
-            except ValueError:
-                return np.array([1e6], dtype=float)
+        beta_0_guess = float(np.log(max(target_mean, np.finfo(float).tiny)))
+        c_guess = 1.0
+        shape_guess = max(target_mean * target_mean / max(target_variance - target_mean, np.finfo(float).tiny), 1e-6)
+
+        def moments(params: np.ndarray) -> np.ndarray:
+            beta_0, log_c, log_shape = params
+            c = float(np.exp(log_c))
+            shape = float(np.exp(log_shape))
+            mu = self._mu(beta_0, c)
+            mean_mu, var_mu, e_var = _negative_binomial_moments(mu, shape)
+            mean_mu2 = float((mu**2).mean())
+            total_var = mean_mu + (1.0 + 1.0 / shape) * mean_mu2 - mean_mu**2
+            snr = np.inf if e_var == 0.0 else var_mu / e_var
+            return np.array(
+                [
+                    mean_mu - target_mean,
+                    total_var - target_variance,
+                    snr - self.target_snr,
+                ],
+                dtype=float,
+            )
 
         result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0], dtype=float),
-            bounds=([-np.inf], [np.inf]),
+            moments,
+            x0=np.array([beta_0_guess, np.log(c_guess), np.log(shape_guess)], dtype=float),
+            bounds=([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, np.inf]),
         )
 
         if not result.success:
-            raise ValueError(f"Unable to calibrate TruncatedGeometricRegressor: {result.message}")
+            raise ValueError(f"Unable to calibrate NegativeBinomialRegressor: {result.message}")
 
-        return TruncatedGeometricRegressor(
-            target_mean=self.target_mean,
-            X=self.X,
-            beta_1_init=self.beta_1_init,
-            predictor_names=self.predictor_names,
-            predictor_transformations=None,
+        beta_0, log_c, log_shape = result.x
+        return NegativeBinomialRegressor(
+            shape=float(np.exp(log_shape)),
+            mean=float(np.exp(beta_0)),
             min=self.min,
             max=self.max,
-            beta_0=float(result.x[0]),
+            truncated=self.truncated,
+            X=self.X,
+            beta_1=self.beta_1,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=float(beta_0),
+            c=float(np.exp(log_c)),
+            target_snr=self.target_snr,
         )
 
-    def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None:
-            raise ValueError("TruncatedGeometricRegressor must be calibrated before sampling")
-
-        p = np.repeat(self._probability(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
-        samples = np.empty(n, dtype=float)
-        rng = np.random.default_rng()
-        for idx, current_p in enumerate(p):
-            dist = stats.nbinom(1, current_p)
-            lower = dist.cdf(self.min - 1)
-            upper = dist.cdf(self.max)
-            u = rng.uniform(lower, upper)
-            samples[idx] = dist.ppf(u)
-        return _as_1d_array(np.clip(samples, self.min, self.max))
-
-
-@dataclass(frozen=True)
-class TruncatedNegativeBinomialRegressor:
-    target_mean: float
-    target_variance: float
-    min: int
-    max: int
-    X: np.ndarray
-    beta_1_init: np.ndarray
-    predictor_names: list[str] | None = None
-    predictor_transformations: dict[str, str] | None = None
-    shape: float | None = None
-    beta_0: float | None = None
-
-    def __post_init__(self) -> None:
-        _validate_bounds(self.min, self.max)
-        X = np.asarray(self.X, dtype=float)
-        beta_1_init = np.asarray(self.beta_1_init, dtype=float).reshape(-1)
-        if X.ndim != 2:
-            raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1_init.shape[0]:
-            raise ValueError("beta_1_init must have one coefficient per column in X")
-        if self.target_mean <= 0:
-            raise ValueError("target_mean must be positive")
-        if self.target_variance <= 0:
-            raise ValueError("target_variance must be positive")
-        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
-        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
-        object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1_init", beta_1_init)
-        object.__setattr__(self, "predictor_names", predictor_names)
-
-    def _linear_predictor(self, beta_0: float) -> np.ndarray:
-        return beta_0 + self.X @ self.beta_1_init
-
-    def _mean_param(self, beta_0: float) -> np.ndarray:
-        return np.exp(self._linear_predictor(beta_0))
-
-    def _row_moments(self, beta_0: float, shape: float) -> tuple[np.ndarray, np.ndarray]:
-        mean_param = self._mean_param(beta_0)
-        support = np.arange(self.min, self.max + 1, dtype=float)
-        mean_matrix = mean_param[:, None]
-        p_matrix = shape / (shape + mean_matrix)
-        pmf = stats.nbinom(shape, p_matrix).pmf(support)
-        pmf_sum = np.sum(pmf, axis=1, keepdims=True)
-        lower = stats.nbinom(shape, shape / (shape + mean_param)).cdf(self.min - 1)
-        upper = stats.nbinom(shape, shape / (shape + mean_param)).cdf(self.max)
-        if np.any(lower >= upper) or np.any(pmf_sum <= 0):
-            raise ValueError("truncation interval has zero probability mass")
-
-        pmf = pmf / pmf_sum
-        cond_mean = np.sum(support * pmf, axis=1)
-        cond_second = np.sum((support**2) * pmf, axis=1)
-        cond_var = cond_second - cond_mean**2
-        return cond_mean, cond_var
-
-    def target_mean_value(self, beta_0: float, shape: float) -> float:
-        cond_mean, _ = self._row_moments(beta_0, shape)
-        return float(cond_mean.mean())
-
-    def target_variance_value(self, beta_0: float, shape: float) -> float:
-        cond_mean, cond_var = self._row_moments(beta_0, shape)
-        return float(cond_mean.var() + cond_var.mean())
-
-    def _feasible_initial_guess(self) -> tuple[float, float]:
-        beta_0 = float(np.log(max(self.target_mean, 1e-6)))
-        shape = max(self.target_mean**2 / max(self.target_variance - self.target_mean, 1e-6), 1.0 + 1e-3)
-        return beta_0, shape
-
-    def calibrate(self) -> "TruncatedNegativeBinomialRegressor":
-        if self.beta_0 is not None and self.shape is not None:
-            return self
-
-        initial_beta_0, initial_shape = self._feasible_initial_guess()
-
-        def residuals(params: np.ndarray) -> np.ndarray:
-            beta_0, log_shape = params
-            shape = float(np.exp(log_shape))
-            try:
-                mean_residual = self.target_mean_value(beta_0, shape) - self.target_mean
-                variance_residual = self.target_variance_value(beta_0, shape) - self.target_variance
-                return np.array([mean_residual, variance_residual], dtype=float)
-            except ValueError:
-                return np.array([1e6, 1e6], dtype=float)
-
-        result = optimize.least_squares(
-            residuals,
-            x0=np.array([initial_beta_0, np.log(initial_shape)], dtype=float),
-            bounds=([-np.inf, -np.inf], [np.inf, np.inf]),
-        )
-
-        if not result.success:
-            raise ValueError(f"Unable to calibrate TruncatedNegativeBinomialRegressor: {result.message}")
-
-        beta_0, log_shape = result.x
-        shape = float(np.exp(log_shape))
-        return replace(self, beta_0=float(beta_0), shape=shape)
+    def _calibrate_truncated(self) -> "NegativeBinomialRegressor":
+        raise NotImplementedError("NegativeBinomialRegressor truncated calibration not yet implemented")
 
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.shape is None:
-            raise ValueError("TruncatedNegativeBinomialRegressor must be calibrated before sampling")
+        if self.beta_0 is None or self.c is None:
+            raise ValueError("NegativeBinomialRegressor must be calibrated before sampling")
 
-        mean_param = np.repeat(self._mean_param(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
+        mu = np.repeat(self._mu(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
         samples = np.empty(n, dtype=float)
         rng = np.random.default_rng()
-        for idx, current_mean in enumerate(mean_param):
-            p = self.shape / (self.shape + current_mean)
+        for idx, current_mu in enumerate(mu):
+            p = self.shape / (self.shape + current_mu) if current_mu > 0 else 1.0
             dist = stats.nbinom(self.shape, p)
             lower = dist.cdf(self.min - 1)
             upper = dist.cdf(self.max)
-            u = rng.uniform(lower, upper)
-            samples[idx] = dist.ppf(u)
-        return _as_1d_array(np.clip(samples, self.min, self.max))
+            if lower >= upper:
+                raise ValueError("truncation interval has zero probability mass")
+            samples[idx] = dist.ppf(rng.uniform(lower, upper))
+        return _as_1d_array(samples)
 
 
 @dataclass(frozen=True)

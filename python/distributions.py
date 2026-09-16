@@ -17,137 +17,104 @@ def _validate_bounds(min_value, max_value) -> None:
 class Normal:
     mean: float
     standard_deviation: float
-
-    def _distribution(self):
-        if self.standard_deviation <= 0:
-            raise ValueError("standard_deviation must be positive")
-        return stats.norm(loc=self.mean, scale=self.standard_deviation)
-
-    def target_mean(self) -> float:
-        return float(self._distribution().mean())
-
-    def target_variance(self) -> float:
-        return float(self._distribution().var())
-
-    def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n))
-
-
-@dataclass(frozen=True)
-class TruncatedNormal:
-    mean: float
-    standard_deviation: float
     min: float
     max: float
+    truncated: bool = False
+    truncation_tolerance: float = 0.05
 
-    def _distribution(self):
+    def _get_untruncated_mean(self) -> float:
+        if self.standard_deviation <= 0:
+            raise ValueError("standard_deviation must be positive")
+        return float(self.mean)
+
+    def _get_untruncated_variance(self) -> float:
+        if self.standard_deviation <= 0:
+            raise ValueError("standard_deviation must be positive")
+        return float(self.standard_deviation**2)
+
+    def _get_truncated_mean(self) -> float:
         if self.standard_deviation <= 0:
             raise ValueError("standard_deviation must be positive")
         _validate_bounds(self.min, self.max)
         a = (self.min - self.mean) / self.standard_deviation
         b = (self.max - self.mean) / self.standard_deviation
-        return stats.truncnorm(a, b, loc=self.mean, scale=self.standard_deviation)
+        return float(stats.truncnorm(a, b, loc=self.mean, scale=self.standard_deviation).mean())
 
-    def target_mean(self) -> float:
-        return float(self._distribution().mean())
-
-    def target_variance(self) -> float:
-        return float(self._distribution().var())
-
-    def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n))
-
-
-@dataclass(frozen=True)
-class Exponential:
-    rate: float
-
-    def _distribution(self):
-        if self.rate <= 0:
-            raise ValueError("rate must be positive")
-        return stats.expon(scale=1.0 / self.rate)
-
-    def target_mean(self) -> float:
-        return float(self._distribution().mean())
-
-    def target_variance(self) -> float:
-        return float(self._distribution().var())
-
-    def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n))
-
-
-@dataclass(frozen=True)
-class TruncatedExponential:
-    rate: float
-    min: float
-    max: float
-
-    def _distribution(self):
-        if self.rate <= 0:
-            raise ValueError("rate must be positive")
+    def _get_truncated_variance(self) -> float:
+        if self.standard_deviation <= 0:
+            raise ValueError("standard_deviation must be positive")
         _validate_bounds(self.min, self.max)
-        return stats.truncexpon(b=(self.max - self.min) * self.rate, loc=self.min, scale=1.0 / self.rate)
+        a = (self.min - self.mean) / self.standard_deviation
+        b = (self.max - self.mean) / self.standard_deviation
+        return float(stats.truncnorm(a, b, loc=self.mean, scale=self.standard_deviation).var())
 
-    def target_mean(self) -> float:
-        return float(self._distribution().mean())
+    def _validate_truncation(self) -> None:
+        if self.standard_deviation <= 0:
+            raise ValueError("standard_deviation must be positive")
+        _validate_bounds(self.min, self.max)
+
+        untruncated_mean = self._get_untruncated_mean()
+        untruncated_variance = self._get_untruncated_variance()
+        truncated_mean = self._get_truncated_mean()
+        truncated_variance = self._get_truncated_variance()
+
+        eps = np.finfo(float).tiny
+        mean_shift = abs(truncated_mean - untruncated_mean) / max(abs(untruncated_mean), eps)
+        variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
+        if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
+            raise ValueError(
+                "min and max need to be adjusted to avoid serious truncation; "
+                f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
+                f"tolerance={self.truncation_tolerance:.6f}"
+            )
+
+    def get_mean(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_mean() if self.truncated else self._get_untruncated_mean()
+
+    def get_variance(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_variance() if self.truncated else self._get_untruncated_variance()
 
     def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n))
+        if self.standard_deviation <= 0:
+            raise ValueError("standard_deviation must be positive")
+        _validate_bounds(self.min, self.max)
+        self._validate_truncation()
+        a = (self.min - self.mean) / self.standard_deviation
+        b = (self.max - self.mean) / self.standard_deviation
+        return _as_1d_array(stats.truncnorm(a, b, loc=self.mean, scale=self.standard_deviation).rvs(size=n))
 
 
 @dataclass(frozen=True)
 class Gamma:
     shape: float
     rate: float
-
-    def _distribution(self):
-        if self.shape <= 0:
-            raise ValueError("shape must be positive")
-        if self.rate <= 0:
-            raise ValueError("rate must be positive")
-        return stats.gamma(a=self.shape, scale=1.0 / self.rate)
-
-    def target_mean(self) -> float:
-        return float(self._distribution().mean())
-
-    def target_variance(self) -> float:
-        return float(self._distribution().var())
-
-    def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n))
-
-
-@dataclass(frozen=True)
-class TruncatedGamma:
-    shape: float
-    rate: float
     min: float
     max: float
+    truncated: bool = False
+    truncation_tolerance: float = 0.05
 
-    def sample(self, n: int) -> np.ndarray:
+    def _get_untruncated_mean(self) -> float:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        return float(self.shape / self.rate)
+
+    def _get_untruncated_variance(self) -> float:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        return float(self.shape / (self.rate**2))
+
+    def _get_truncated_mean(self) -> float:
         if self.shape <= 0:
             raise ValueError("shape must be positive")
         if self.rate <= 0:
             raise ValueError("rate must be positive")
         _validate_bounds(self.min, self.max)
-
-        dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
-        lower = dist.cdf(self.min)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-
-        uniforms = np.random.uniform(lower, upper, size=n)
-        return _as_1d_array(dist.ppf(uniforms))
-
-    def target_mean(self) -> float:
-        if self.shape <= 0:
-            raise ValueError("shape must be positive")
-        if self.rate <= 0:
-            raise ValueError("rate must be positive")
-        _validate_bounds(self.min, self.max)
-
         dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
         lower = dist.cdf(self.min)
         upper = dist.cdf(self.max)
@@ -155,90 +122,146 @@ class TruncatedGamma:
             raise ValueError("truncation interval has zero probability mass")
         return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
 
-    def target_variance(self) -> float:
+    def _get_truncated_variance(self) -> float:
         if self.shape <= 0:
             raise ValueError("shape must be positive")
         if self.rate <= 0:
             raise ValueError("rate must be positive")
         _validate_bounds(self.min, self.max)
-
         dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
         lower = dist.cdf(self.min)
         upper = dist.cdf(self.max)
         if lower >= upper:
             raise ValueError("truncation interval has zero probability mass")
-        return float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True) - dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True) ** 2)
-
-
-@dataclass(frozen=True)
-class LogNormal:
-    log_mean: float
-    log_standard_deviation: float
-
-    def _distribution(self):
-        if self.log_standard_deviation <= 0:
-            raise ValueError("log_standard_deviation must be positive")
-        return stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
-
-    def target_mean(self) -> float:
-        return float(self._distribution().mean())
-
-    def target_variance(self) -> float:
-        return float(self._distribution().var())
-
-    def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n))
-
-
-@dataclass(frozen=True)
-class TruncatedLogNormal:
-    log_mean: float
-    log_standard_deviation: float
-    min: float
-    max: float
-
-    def sample(self, n: int) -> np.ndarray:
-        if self.log_standard_deviation <= 0:
-            raise ValueError("log_standard_deviation must be positive")
-        _validate_bounds(self.min, self.max)
-
-        dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
-        lower = dist.cdf(self.min)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-
-        uniforms = np.random.uniform(lower, upper, size=n)
-        return _as_1d_array(dist.ppf(uniforms))
-
-    def target_mean(self) -> float:
-        if self.log_standard_deviation <= 0:
-            raise ValueError("log_standard_deviation must be positive")
-        _validate_bounds(self.min, self.max)
-
-        dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
-        lower = dist.cdf(self.min)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
-
-    def target_variance(self) -> float:
-        if self.log_standard_deviation <= 0:
-            raise ValueError("log_standard_deviation must be positive")
-        _validate_bounds(self.min, self.max)
-
-        dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
-        lower = dist.cdf(self.min)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-
         mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
         second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
         return second_moment - mean**2
 
+    def _validate_truncation(self) -> None:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        _validate_bounds(self.min, self.max)
+        untruncated_mean = self._get_untruncated_mean()
+        untruncated_variance = self._get_untruncated_variance()
+        truncated_mean = self._get_truncated_mean()
+        truncated_variance = self._get_truncated_variance()
+        eps = np.finfo(float).tiny
+        mean_shift = abs(truncated_mean - untruncated_mean) / max(abs(untruncated_mean), eps)
+        variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
+        if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
+            raise ValueError(
+                "min and max need to be adjusted to avoid serious truncation; "
+                f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
+                f"tolerance={self.truncation_tolerance:.6f}"
+            )
 
+    def get_mean(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_mean() if self.truncated else self._get_untruncated_mean()
+
+    def get_variance(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_variance() if self.truncated else self._get_untruncated_variance()
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        _validate_bounds(self.min, self.max)
+        self._validate_truncation()
+        dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
+        lower = dist.cdf(self.min)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        uniforms = np.random.uniform(lower, upper, size=n)
+        return _as_1d_array(dist.ppf(uniforms))
+@dataclass(frozen=True)
+class LogNormal:
+    log_mean: float
+    log_standard_deviation: float
+    min: float
+    max: float
+    truncated: bool = False
+    truncation_tolerance: float = 0.05
+
+    def _get_untruncated_mean(self) -> float:
+        if self.log_standard_deviation <= 0:
+            raise ValueError("log_standard_deviation must be positive")
+        return float(np.exp(self.log_mean + 0.5 * self.log_standard_deviation**2))
+
+    def _get_untruncated_variance(self) -> float:
+        if self.log_standard_deviation <= 0:
+            raise ValueError("log_standard_deviation must be positive")
+        mean = np.exp(self.log_mean + 0.5 * self.log_standard_deviation**2)
+        return float((np.exp(self.log_standard_deviation**2) - 1.0) * mean**2)
+
+    def _get_truncated_mean(self) -> float:
+        if self.log_standard_deviation <= 0:
+            raise ValueError("log_standard_deviation must be positive")
+        _validate_bounds(self.min, self.max)
+        dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
+        lower = dist.cdf(self.min)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+
+    def _get_truncated_variance(self) -> float:
+        if self.log_standard_deviation <= 0:
+            raise ValueError("log_standard_deviation must be positive")
+        _validate_bounds(self.min, self.max)
+        dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
+        lower = dist.cdf(self.min)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
+        return second_moment - mean**2
+
+    def _validate_truncation(self) -> None:
+        if self.log_standard_deviation <= 0:
+            raise ValueError("log_standard_deviation must be positive")
+        _validate_bounds(self.min, self.max)
+        untruncated_mean = self._get_untruncated_mean()
+        untruncated_variance = self._get_untruncated_variance()
+        truncated_mean = self._get_truncated_mean()
+        truncated_variance = self._get_truncated_variance()
+        eps = np.finfo(float).tiny
+        mean_shift = abs(truncated_mean - untruncated_mean) / max(abs(untruncated_mean), eps)
+        variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
+        if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
+            raise ValueError(
+                "min and max need to be adjusted to avoid serious truncation; "
+                f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
+                f"tolerance={self.truncation_tolerance:.6f}"
+            )
+
+    def get_mean(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_mean() if self.truncated else self._get_untruncated_mean()
+
+    def get_variance(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_variance() if self.truncated else self._get_untruncated_variance()
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.log_standard_deviation <= 0:
+            raise ValueError("log_standard_deviation must be positive")
+        _validate_bounds(self.min, self.max)
+        self._validate_truncation()
+        dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
+        lower = dist.cdf(self.min)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        uniforms = np.random.uniform(lower, upper, size=n)
+        return _as_1d_array(dist.ppf(uniforms))
+    
 @dataclass(frozen=True)
 class Beta:
     shape_1: float
@@ -254,43 +277,125 @@ class Beta:
         samples = stats.beta.rvs(self.shape_1, self.shape_2, size=n)
         return _as_1d_array(self.min + (self.max - self.min) * samples)
 
-    def target_mean(self) -> float:
+    def get_unit_mean(self) -> float:
         if self.shape_1 <= 0 or self.shape_2 <= 0:
             raise ValueError("shape parameters must be positive")
-        _validate_bounds(self.min, self.max)
+        return float(self.shape_1 / (self.shape_1 + self.shape_2))
 
-        dist = stats.beta(self.shape_1, self.shape_2, loc=self.min, scale=self.max - self.min)
-        return float(dist.mean())
-
-    def target_variance(self) -> float:
+    def get_unit_variance(self) -> float:
         if self.shape_1 <= 0 or self.shape_2 <= 0:
             raise ValueError("shape parameters must be positive")
-        _validate_bounds(self.min, self.max)
+        total = self.shape_1 + self.shape_2
+        return float(self.shape_1 * self.shape_2 / (total**2 * (total + 1.0)))
 
-        dist = stats.beta(self.shape_1, self.shape_2, loc=self.min, scale=self.max - self.min)
-        return float(dist.var())
+    def get_scaled_mean(self) -> float:
+        _validate_bounds(self.min, self.max)
+        return float(self.min + (self.max - self.min) * self.get_unit_mean())
+
+    def get_scaled_variance(self) -> float:
+        _validate_bounds(self.min, self.max)
+        return float((self.max - self.min) ** 2 * self.get_unit_variance())
+
+    def get_mean(self) -> float:
+        return self.get_scaled_mean()
+
+    def get_variance(self) -> float:
+        return self.get_scaled_variance()
 
 
 @dataclass(frozen=True)
 class Binomial:
     n_trials: int
     success_prob: float
+    min: int
+    max: int
+    truncated: bool = False
+    truncation_tolerance: float = 0.05
 
-    def _distribution(self):
+    def _get_untruncated_mean(self) -> float:
         if self.n_trials < 1:
             raise ValueError("n_trials must be >= 1")
         if not 0.0 <= self.success_prob <= 1.0:
             raise ValueError("success_prob must be in [0, 1]")
-        return stats.binom(self.n_trials, self.success_prob)
+        return float(self.n_trials * self.success_prob)
 
-    def target_mean(self) -> float:
-        return float(self._distribution().mean())
+    def _get_untruncated_variance(self) -> float:
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        return float(self.n_trials * self.success_prob * (1.0 - self.success_prob))
 
-    def target_variance(self) -> float:
-        return float(self._distribution().var())
+    def _get_truncated_mean(self) -> float:
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        _validate_bounds(self.min, self.max)
+        dist = stats.binom(self.n_trials, self.success_prob)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+
+    def _get_truncated_variance(self) -> float:
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        _validate_bounds(self.min, self.max)
+        dist = stats.binom(self.n_trials, self.success_prob)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
+        return second_moment - mean**2
+
+    def _validate_truncation(self) -> None:
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        _validate_bounds(self.min, self.max)
+        untruncated_mean = self._get_untruncated_mean()
+        untruncated_variance = self._get_untruncated_variance()
+        truncated_mean = self._get_truncated_mean()
+        truncated_variance = self._get_truncated_variance()
+        eps = np.finfo(float).tiny
+        mean_shift = abs(truncated_mean - untruncated_mean) / max(abs(untruncated_mean), eps)
+        variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
+        if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
+            raise ValueError(
+                "min and max need to be adjusted to avoid serious truncation; "
+                f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
+                f"tolerance={self.truncation_tolerance:.6f}"
+            )
+
+    def get_mean(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_mean() if self.truncated else self._get_untruncated_mean()
+
+    def get_variance(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_variance() if self.truncated else self._get_untruncated_variance()
 
     def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n))
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        _validate_bounds(self.min, self.max)
+        self._validate_truncation()
+        dist = stats.binom(self.n_trials, self.success_prob)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        uniforms = np.random.uniform(lower, upper, size=n)
+        return _as_1d_array(dist.ppf(uniforms))
 
 
 @dataclass(frozen=True)
@@ -331,90 +436,28 @@ class Bernoulli:
         if not 0.0 <= self.success_prob <= 1.0:
             raise ValueError("success_prob must be in [0, 1]")
         return float(self.success_prob * (1.0 - self.success_prob))
-
-
-@dataclass(frozen=True)
-class TruncatedBinomial:
-    n_trials: int
-    success_prob: float
-    min: int
-    max: int
-
-    def sample(self, n: int) -> np.ndarray:
-        if self.n_trials < 1:
-            raise ValueError("n_trials must be >= 1")
-        if not 0.0 <= self.success_prob <= 1.0:
-            raise ValueError("success_prob must be in [0, 1]")
-        _validate_bounds(self.min, self.max)
-
-        dist = stats.binom(self.n_trials, self.success_prob)
-        lower = dist.cdf(self.min - 1)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-
-        uniforms = np.random.uniform(lower, upper, size=n)
-        return _as_1d_array(dist.ppf(uniforms))
-
-    def target_mean(self) -> float:
-        if self.n_trials < 1:
-            raise ValueError("n_trials must be >= 1")
-        if not 0.0 <= self.success_prob <= 1.0:
-            raise ValueError("success_prob must be in [0, 1]")
-        _validate_bounds(self.min, self.max)
-
-        dist = stats.binom(self.n_trials, self.success_prob)
-        lower = dist.cdf(self.min - 1)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
-
-
 @dataclass(frozen=True)
 class Poisson:
     rate: float
-
-    def _distribution(self):
-        if self.rate <= 0:
-            raise ValueError("rate must be positive")
-        return stats.poisson(self.rate)
-
-    def target_mean(self) -> float:
-        return float(self._distribution().mean())
-
-    def target_variance(self) -> float:
-        return float(self._distribution().var())
-
-    def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n))
-
-
-@dataclass(frozen=True)
-class TruncatedPoisson:
-    rate: float
     min: int
     max: int
+    truncated: bool = False
+    truncation_tolerance: float = 0.05
 
-    def sample(self, n: int) -> np.ndarray:
+    def _get_untruncated_mean(self) -> float:
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        return float(self.rate)
+
+    def _get_untruncated_variance(self) -> float:
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        return float(self.rate)
+
+    def _get_truncated_mean(self) -> float:
         if self.rate <= 0:
             raise ValueError("rate must be positive")
         _validate_bounds(self.min, self.max)
-
-        dist = stats.poisson(self.rate)
-        lower = dist.cdf(self.min - 1)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-
-        uniforms = np.random.uniform(lower, upper, size=n)
-        return _as_1d_array(dist.ppf(uniforms))
-
-    def target_mean(self) -> float:
-        if self.rate <= 0:
-            raise ValueError("rate must be positive")
-        _validate_bounds(self.min, self.max)
-
         dist = stats.poisson(self.rate)
         lower = dist.cdf(self.min - 1)
         upper = dist.cdf(self.max)
@@ -422,11 +465,10 @@ class TruncatedPoisson:
             raise ValueError("truncation interval has zero probability mass")
         return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
 
-    def target_variance(self) -> float:
+    def _get_truncated_variance(self) -> float:
         if self.rate <= 0:
             raise ValueError("rate must be positive")
         _validate_bounds(self.min, self.max)
-
         dist = stats.poisson(self.rate)
         lower = dist.cdf(self.min - 1)
         upper = dist.cdf(self.max)
@@ -436,127 +478,74 @@ class TruncatedPoisson:
         second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
         return second_moment - mean**2
 
-
-@dataclass(frozen=True)
-class Geometric:
-    success_prob: float
-
-    def _distribution(self):
-        if not 0.0 < self.success_prob <= 1.0:
-            raise ValueError("success_prob must be in (0, 1]")
-        return stats.geom(self.success_prob)
-
-    def target_mean(self) -> float:
-        return float(self._distribution().mean() - 1.0)
-
-    def target_variance(self) -> float:
-        return float(self._distribution().var())
-
-    def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n) - 1)
-
-
-@dataclass(frozen=True)
-class TruncatedGeometric:
-    success_prob: float
-    min: int
-    max: int
-
-    def sample(self, n: int) -> np.ndarray:
-        if not 0.0 < self.success_prob <= 1.0:
-            raise ValueError("success_prob must be in (0, 1]")
+    def _validate_truncation(self) -> None:
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
         _validate_bounds(self.min, self.max)
+        untruncated_mean = self._get_untruncated_mean()
+        untruncated_variance = self._get_untruncated_variance()
+        truncated_mean = self._get_truncated_mean()
+        truncated_variance = self._get_truncated_variance()
+        eps = np.finfo(float).tiny
+        mean_shift = abs(truncated_mean - untruncated_mean) / max(abs(untruncated_mean), eps)
+        variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
+        if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
+            raise ValueError(
+                "min and max need to be adjusted to avoid serious truncation; "
+                f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
+                f"tolerance={self.truncation_tolerance:.6f}"
+            )
 
-        dist = stats.nbinom(1, self.success_prob)
+    def get_mean(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_mean() if self.truncated else self._get_untruncated_mean()
+
+    def get_variance(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_variance() if self.truncated else self._get_untruncated_variance()
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        _validate_bounds(self.min, self.max)
+        self._validate_truncation()
+        dist = stats.poisson(self.rate)
         lower = dist.cdf(self.min - 1)
         upper = dist.cdf(self.max)
         if lower >= upper:
             raise ValueError("truncation interval has zero probability mass")
-
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(dist.ppf(uniforms))
-
-    def target_mean(self) -> float:
-        if not 0.0 < self.success_prob <= 1.0:
-            raise ValueError("success_prob must be in (0, 1]")
-        _validate_bounds(self.min, self.max)
-
-        dist = stats.nbinom(1, self.success_prob)
-        lower = dist.cdf(self.min - 1)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
-
-    def target_variance(self) -> float:
-        if not 0.0 < self.success_prob <= 1.0:
-            raise ValueError("success_prob must be in (0, 1]")
-        _validate_bounds(self.min, self.max)
-
-        dist = stats.nbinom(1, self.success_prob)
-        lower = dist.cdf(self.min - 1)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
-        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
-        return second_moment - mean**2
-
-
 @dataclass(frozen=True)
 class NegativeBinomial:
     shape: float
     mean: float
-
-    def _distribution(self):
-        if self.shape <= 0:
-            raise ValueError("shape must be positive")
-        if self.mean < 0:
-            raise ValueError("mean must be non-negative")
-        p = self.shape / (self.shape + self.mean) if self.mean > 0 else 1.0
-        return stats.nbinom(self.shape, p)
-
-    def target_mean(self) -> float:
-        return float(self._distribution().mean())
-
-    def target_variance(self) -> float:
-        return float(self._distribution().var())
-
-    def sample(self, n: int) -> np.ndarray:
-        return _as_1d_array(self._distribution().rvs(size=n))
-
-
-@dataclass(frozen=True)
-class TruncatedNegativeBinomial:
-    shape: float
-    mean: float
     min: int
     max: int
+    truncated: bool = False
+    truncation_tolerance: float = 0.05
 
-    def sample(self, n: int) -> np.ndarray:
+    def _get_untruncated_mean(self) -> float:
         if self.shape <= 0:
             raise ValueError("shape must be positive")
         if self.mean < 0:
             raise ValueError("mean must be non-negative")
-        _validate_bounds(self.min, self.max)
+        return float(self.mean)
 
+    def _get_untruncated_variance(self) -> float:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.mean < 0:
+            raise ValueError("mean must be non-negative")
         p = self.shape / (self.shape + self.mean) if self.mean > 0 else 1.0
-        dist = stats.nbinom(self.shape, p)
-        lower = dist.cdf(self.min - 1)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
+        return float(self.shape * (1.0 - p) / (p**2))
 
-        uniforms = np.random.uniform(lower, upper, size=n)
-        return _as_1d_array(dist.ppf(uniforms))
-
-    def target_mean(self) -> float:
+    def _get_truncated_mean(self) -> float:
         if self.shape <= 0:
             raise ValueError("shape must be positive")
         if self.mean < 0:
             raise ValueError("mean must be non-negative")
         _validate_bounds(self.min, self.max)
-
         p = self.shape / (self.shape + self.mean) if self.mean > 0 else 1.0
         dist = stats.nbinom(self.shape, p)
         lower = dist.cdf(self.min - 1)
@@ -565,13 +554,12 @@ class TruncatedNegativeBinomial:
             raise ValueError("truncation interval has zero probability mass")
         return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
 
-    def target_variance(self) -> float:
+    def _get_truncated_variance(self) -> float:
         if self.shape <= 0:
             raise ValueError("shape must be positive")
         if self.mean < 0:
             raise ValueError("mean must be non-negative")
         _validate_bounds(self.min, self.max)
-
         p = self.shape / (self.shape + self.mean) if self.mean > 0 else 1.0
         dist = stats.nbinom(self.shape, p)
         lower = dist.cdf(self.min - 1)
@@ -582,7 +570,49 @@ class TruncatedNegativeBinomial:
         second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
         return second_moment - mean**2
 
+    def _validate_truncation(self) -> None:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.mean < 0:
+            raise ValueError("mean must be non-negative")
+        _validate_bounds(self.min, self.max)
+        untruncated_mean = self._get_untruncated_mean()
+        untruncated_variance = self._get_untruncated_variance()
+        truncated_mean = self._get_truncated_mean()
+        truncated_variance = self._get_truncated_variance()
+        eps = np.finfo(float).tiny
+        mean_shift = abs(truncated_mean - untruncated_mean) / max(abs(untruncated_mean), eps)
+        variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
+        if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
+            raise ValueError(
+                "min and max need to be adjusted to avoid serious truncation; "
+                f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
+                f"tolerance={self.truncation_tolerance:.6f}"
+            )
 
+    def get_mean(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_mean() if self.truncated else self._get_untruncated_mean()
+
+    def get_variance(self) -> float:
+        self._validate_truncation()
+        return self._get_truncated_variance() if self.truncated else self._get_untruncated_variance()
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.mean < 0:
+            raise ValueError("mean must be non-negative")
+        _validate_bounds(self.min, self.max)
+        self._validate_truncation()
+        p = self.shape / (self.shape + self.mean) if self.mean > 0 else 1.0
+        dist = stats.nbinom(self.shape, p)
+        lower = dist.cdf(self.min - 1)
+        upper = dist.cdf(self.max)
+        if lower >= upper:
+            raise ValueError("truncation interval has zero probability mass")
+        uniforms = np.random.uniform(lower, upper, size=n)
+        return _as_1d_array(dist.ppf(uniforms))
 @dataclass(frozen=True)
 class CategoricalNominal:
     categories: list[str]
