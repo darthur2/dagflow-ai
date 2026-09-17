@@ -2,8 +2,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from math import isfinite
 from typing import Any, Literal
+import sys
 
 from pydantic import BaseModel, ConfigDict, RootModel, ValidationError as PydanticValidationError, field_validator
+
+PYTHON_ROOT = Path(__file__).resolve().parents[1]
+if str(PYTHON_ROOT) not in sys.path:
+    sys.path.insert(0, str(PYTHON_ROOT))
 
 
 @dataclass(frozen=True)
@@ -208,14 +213,15 @@ def _dag_formula_predictor_consistency_report(dag_data: dict[str, Any], formulas
     parents = _dag_node_parents(dag_data)
     formula_names = set(formulas_data.keys())
     dag_node_names = set(dag_nodes.keys())
+    endogenous_nodes = {node_name for node_name, parent_names in parents.items() if parent_names}
 
-    missing_formulas_for_dag_nodes = sorted(dag_node_names - formula_names)
-    extra_formulas_for_non_dag_nodes = sorted(formula_names - dag_node_names)
+    missing_formulas_for_dag_nodes = sorted(endogenous_nodes - formula_names)
+    extra_formulas_for_non_dag_nodes = sorted(formula_names - endogenous_nodes)
 
     missing_predictors_from_formula: dict[str, list[str]] = {}
     extra_predictors_not_in_dag: dict[str, list[str]] = {}
 
-    for formula_name in sorted(formula_names & dag_node_names):
+    for formula_name in sorted(formula_names & endogenous_nodes):
         dag_parents = parents.get(formula_name, set())
         formula_item = formulas_data.get(formula_name)
         if not isinstance(formula_item, dict):

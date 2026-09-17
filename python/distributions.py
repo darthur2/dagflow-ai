@@ -63,9 +63,10 @@ class Normal:
         variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
         if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
             raise ValueError(
-                "min and max need to be adjusted to avoid serious truncation; "
+                "truncation too severe; adjust parameters or min/max to avoid serious truncation; "
                 f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
-                f"tolerance={self.truncation_tolerance:.6f}"
+                f"tolerance={self.truncation_tolerance:.6f}, "
+                f"min={self.min}, max={self.max}"
             )
 
     def get_mean(self) -> float:
@@ -152,9 +153,10 @@ class Gamma:
         variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
         if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
             raise ValueError(
-                "min and max need to be adjusted to avoid serious truncation; "
+                "truncation too severe; adjust parameters or min/max to avoid serious truncation; "
                 f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
-                f"tolerance={self.truncation_tolerance:.6f}"
+                f"tolerance={self.truncation_tolerance:.6f}, "
+                f"min={self.min}, max={self.max}"
             )
 
     def get_mean(self) -> float:
@@ -236,9 +238,10 @@ class LogNormal:
         variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
         if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
             raise ValueError(
-                "min and max need to be adjusted to avoid serious truncation; "
+                "truncation too severe; adjust parameters or min/max to avoid serious truncation; "
                 f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
-                f"tolerance={self.truncation_tolerance:.6f}"
+                f"tolerance={self.truncation_tolerance:.6f}, "
+                f"min={self.min}, max={self.max}"
             )
 
     def get_mean(self) -> float:
@@ -369,9 +372,10 @@ class Binomial:
         variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
         if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
             raise ValueError(
-                "min and max need to be adjusted to avoid serious truncation; "
+                "truncation too severe; adjust parameters or min/max to avoid serious truncation; "
                 f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
-                f"tolerance={self.truncation_tolerance:.6f}"
+                f"tolerance={self.truncation_tolerance:.6f}, "
+                f"min={self.min}, max={self.max}"
             )
 
     def get_mean(self) -> float:
@@ -471,9 +475,10 @@ class Poisson:
         variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
         if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
             raise ValueError(
-                "min and max need to be adjusted to avoid serious truncation; "
+                "truncation too severe; adjust parameters or min/max to avoid serious truncation; "
                 f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
-                f"tolerance={self.truncation_tolerance:.6f}"
+                f"tolerance={self.truncation_tolerance:.6f}, "
+                f"min={self.min}, max={self.max}"
             )
 
     def get_mean(self) -> float:
@@ -565,9 +570,10 @@ class NegativeBinomial:
         variance_shift = abs(truncated_variance - untruncated_variance) / max(abs(untruncated_variance), eps)
         if mean_shift > self.truncation_tolerance or variance_shift > self.truncation_tolerance:
             raise ValueError(
-                "min and max need to be adjusted to avoid serious truncation; "
+                "truncation too severe; adjust parameters or min/max to avoid serious truncation; "
                 f"mean shift={mean_shift:.6f}, variance shift={variance_shift:.6f}, "
-                f"tolerance={self.truncation_tolerance:.6f}"
+                f"tolerance={self.truncation_tolerance:.6f}, "
+                f"min={self.min}, max={self.max}"
             )
 
     def get_mean(self) -> float:

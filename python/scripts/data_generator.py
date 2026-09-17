@@ -77,8 +77,15 @@ def _build_parent_matrix(
     return matrix, predictor_names, predictor_transformations
 
 
-def _sample_exogenous(distribution, n: int) -> np.ndarray:
-    samples = distribution.sample(n)
+def _sample_exogenous(variable_name: str, distribution, n: int) -> np.ndarray:
+    try:
+        samples = distribution.sample(n)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to generate variable '{variable_name}' during exogenous sampling. "
+            f"distribution={_distribution_name(distribution)}; original_error={type(exc).__name__}: {exc}; "
+            "parameters need to be adjusted or min and max need to be changed to avoid serious truncation"
+        ) from exc
     return np.asarray(samples)
 
 
@@ -99,15 +106,19 @@ def _raise_generation_error(
     stage: str,
     error: Exception,
 ) -> None:
-    raise RuntimeError(
-        "Failed to generate variable "
-        f"'{variable_name}' during {stage}. "
+    message = (
+        f"Failed to generate variable '{variable_name}' during {stage}. "
         f"distribution={distribution_name}; parents={parent_names}; "
         f"X_shape={X.shape}; predictor_names={predictor_names}; "
         f"predictor_transformations={predictor_transformations}; "
         f"beta_0_type={type(beta_0).__name__}; beta_0_shape={getattr(beta_0, 'shape', None)}; "
         f"beta_1_type={type(beta_1).__name__}; beta_1_shape={getattr(beta_1, 'shape', None)}; "
         f"original_error={type(error).__name__}: {error}"
+    )
+    if isinstance(error, ValueError) and "truncation too severe" in str(error):
+        message += "; parameters need to be adjusted or min and max need to be changed to avoid serious truncation"
+    raise RuntimeError(
+        message
     ) from error
 
 
@@ -164,7 +175,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
 
         parent_names = parents_by_child.get(variable_name, [])
         if not parent_names:
-            sampled = _sample_exogenous(distribution, n)
+            sampled = _sample_exogenous(variable_name, distribution, n)
             samples[variable_name] = sampled
             dataframe[variable_name] = sampled
             continue
@@ -206,6 +217,8 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
+                    beta_0=beta_0,
+                    initial_shape=distribution.shape,
                 )
             elif distribution_name == "Log Normal":
                 regressor = regressor_cls(

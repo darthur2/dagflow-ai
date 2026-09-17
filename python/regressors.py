@@ -266,6 +266,7 @@ class GammaRegressor(Gamma):
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
+    initial_shape: float | None = None
     c: float | None = None
 
     def __post_init__(self) -> None:
@@ -278,16 +279,65 @@ class GammaRegressor(Gamma):
             raise ValueError("beta_1 must have one coefficient per column in X")
         if self.target_snr < 0:
             raise ValueError("target_snr must be non-negative")
+        if self.initial_shape is not None and self.initial_shape <= 0:
+            raise ValueError("initial_shape must be positive")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "beta_1", beta_1)
         object.__setattr__(self, "predictor_names", predictor_names)
+        if self.c is None:
+            object.__setattr__(self, "c", 1.0)
 
     def calibrate(self) -> "GammaRegressor":
         if self.truncated:
             return self._calibrate_truncated()
+        self._validate_initial_state()
         return self._calibrate_untruncated()
+
+    def _validate_initial_state(self) -> None:
+        if self.beta_0 is None:
+            raise ValueError("GammaRegressor requires beta_0 before calibration")
+        if self.initial_shape is None:
+            raise ValueError("GammaRegressor requires initial_shape before calibration")
+
+        starting = GammaRegressor(
+            shape=self.initial_shape,
+            rate=self.initial_shape / float(np.exp(self.beta_0)),
+            min=self.min,
+            max=self.max,
+            truncated=self.truncated,
+            target_snr=self.target_snr,
+            X=self.X,
+            beta_1=self.beta_1,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=self.beta_0,
+            initial_shape=self.initial_shape,
+            c=1.0,
+        )
+        diagnostic_n = min(200, max(1, len(self.X)))
+        sample = starting.sample(diagnostic_n)
+        sample_mean = float(np.mean(sample))
+        sample_variance = float(np.var(sample))
+        target_mean = self.get_mean()
+        target_variance = self.get_variance()
+
+        def _within_200_percent(observed: float, target: float) -> bool:
+            if target == 0:
+                return observed == 0
+            return abs(observed - target) / abs(target) <= 2.0
+
+        if not (
+            _within_200_percent(sample_mean, target_mean)
+            and _within_200_percent(sample_variance, target_variance)
+        ):
+            raise ValueError(
+                "GammaRegressor initial state is not close enough to target moments; "
+                f"sample_mean={sample_mean:.6g}, target_mean={target_mean:.6g}, "
+                f"sample_variance={sample_variance:.6g}, target_variance={target_variance:.6g}; "
+                "coefficients of predictors or scaling parameters need to be adjusted"
+            )
 
     def _mu(self, beta_0: float, c: float) -> np.ndarray:
         return np.exp(beta_0 + self.X @ (c * self.beta_1))
@@ -327,7 +377,7 @@ class GammaRegressor(Gamma):
                 [
                     mean_mu - target_mean,
                     total_var - target_variance,
-                    snr - self.target_snr,
+                    10.0 * (snr - self.target_snr),
                 ],
                 dtype=float,
             )
@@ -363,11 +413,12 @@ class GammaRegressor(Gamma):
         raise NotImplementedError("GammaRegressor truncated calibration not yet implemented")
 
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.c is None:
-            raise ValueError("GammaRegressor must be calibrated before sampling")
+        if self.beta_0 is None:
+            raise ValueError("GammaRegressor requires beta_0 before sampling")
 
-        mu = np.repeat(self._mu(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
-        shape = self.rate * np.exp(self.beta_0)
+        c = 1.0 if self.c is None else self.c
+        shape = self.initial_shape if self.initial_shape is not None else self.rate * np.exp(self.beta_0)
+        mu = np.repeat(self._mu(self.beta_0, c), int(np.ceil(n / len(self.X))))[:n]
         scale = mu / shape
         return _as_1d_array(stats.gamma.rvs(a=shape, scale=scale, size=n))
 
