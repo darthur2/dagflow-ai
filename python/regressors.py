@@ -329,11 +329,12 @@ class GammaRegressor(Gamma):
 @dataclass(frozen=True, kw_only=True)
 class LogNormalRegressor(LogNormal):
     X: np.ndarray
+    log_mean: float
     beta_1: np.ndarray
+    log_standard_deviation: float
     predictor_names: list[str] | None = None
     predictor_transformations: dict[str, str] | None = None
     beta_0: float | None = None
-    c: float | None = None
 
     def __post_init__(self) -> None:
         _validate_bounds(self.min, self.max)
@@ -343,6 +344,8 @@ class LogNormalRegressor(LogNormal):
             raise ValueError("X must be a 2D regression matrix")
         if X.shape[1] != beta_1.shape[0]:
             raise ValueError("beta_1 must have one coefficient per column in X")
+        if self.log_standard_deviation <= 0:
+            raise ValueError("log_standard_deviation must be positive")
         predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
         X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
         object.__setattr__(self, "X", X)
@@ -354,58 +357,39 @@ class LogNormalRegressor(LogNormal):
             return self._calibrate_truncated()
         return self._calibrate_untruncated()
 
-    def _log_mean(self, beta_0: float, c: float) -> np.ndarray:
-        return beta_0 + self.X @ (c * self.beta_1)
+    def _log_mean(self, beta_0: float) -> np.ndarray:
+        return beta_0 + self.X @ self.beta_1
 
     def _calibrate_untruncated(self) -> "LogNormalRegressor":
-        if self.beta_0 is not None and self.c is not None:
+        if self.beta_0 is not None:
             return self
 
         self._validate_truncation()
 
         target_mean = self.get_mean()
         target_variance = self.get_variance()
-        x_cov = np.cov(self.X, rowvar=False, ddof=0)
-        if np.isscalar(x_cov):
-            x_cov = np.asarray([[float(x_cov)]], dtype=float)
-        else:
-            x_cov = np.asarray(x_cov, dtype=float)
-        if x_cov.ndim == 0:
-            x_cov = np.asarray([[float(x_cov)]], dtype=float)
-        elif x_cov.ndim == 1:
-            x_cov = np.diag(x_cov)
+        g = self.X @ self.beta_1
+        exp_g = np.exp(g)
+        m1 = float(np.mean(exp_g))
+        m2 = float(np.mean(exp_g**2))
 
-        beta_0_guess = float(np.log(max(target_mean, np.finfo(float).tiny)))
-        sigma_guess = 0.5
-        c_guess = 1.0
+        eps = np.finfo(float).tiny
+        if not np.isfinite(m1) or m1 <= 0:
+            raise ValueError("Unable to calibrate LogNormalRegressor: mean(exp(X @ beta_1)) must be finite and positive")
+        if not np.isfinite(m2) or m2 <= 0:
+            raise ValueError("Unable to calibrate LogNormalRegressor: mean(exp(2 * X @ beta_1)) must be finite and positive")
 
-        def moments(params: np.ndarray) -> np.ndarray:
-            beta_0, log_c, log_sigma = params
-            c = float(np.exp(log_c))
-            sigma = float(np.exp(log_sigma))
-            log_mean = self._log_mean(beta_0, c)
-            mean_y, var_e, e_var = _lognormal_moments(log_mean, sigma)
-            total_var = var_e + e_var
-            return np.array(
-                [
-                    mean_y - target_mean,
-                    total_var - target_variance,
-                ],
-                dtype=float,
+        mean_ratio = target_mean / max(m1, eps)
+        sigma2_argument = ((target_variance / max(target_mean * target_mean, eps)) + 1.0) * (m1 * m1 / m2)
+        if not np.isfinite(sigma2_argument) or sigma2_argument <= 0:
+            raise ValueError(
+                "Unable to calibrate LogNormalRegressor: sigma^2 argument must be positive; "
+                f"target_mean={target_mean:.6g}, target_variance={target_variance:.6g}, m1={m1:.6g}, m2={m2:.6g}, sigma2_argument={sigma2_argument:.6g}"
             )
 
-        result = optimize.least_squares(
-            moments,
-            x0=np.array([beta_0_guess, np.log(c_guess), np.log(sigma_guess)], dtype=float),
-            bounds=([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, np.inf]),
-        )
-
-        if not result.success:
-            raise ValueError(f"Unable to calibrate LogNormalRegressor: {result.message}")
-
-        beta_0, log_c, log_sigma = result.x
-        c = float(np.exp(log_c))
-        sigma = float(np.exp(log_sigma))
+        sigma2 = float(max(0.0, np.log(sigma2_argument)))
+        sigma = float(np.sqrt(sigma2))
+        beta_0 = float(np.log(max(mean_ratio, eps)) - 0.5 * sigma2)
         return LogNormalRegressor(
             log_mean=float(beta_0),
             log_standard_deviation=sigma,
@@ -417,17 +401,16 @@ class LogNormalRegressor(LogNormal):
             predictor_names=self.predictor_names,
             predictor_transformations=None,
             beta_0=float(beta_0),
-            c=c,
         )
 
     def _calibrate_truncated(self) -> "LogNormalRegressor":
         raise NotImplementedError("LogNormalRegressor truncated calibration not yet implemented")
 
     def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None or self.c is None:
+        if self.beta_0 is None:
             raise ValueError("LogNormalRegressor must be calibrated before sampling")
 
-        log_mean = np.repeat(self._log_mean(self.beta_0, self.c), int(np.ceil(n / len(self.X))))[:n]
+        log_mean = np.repeat(self._log_mean(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
         dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(log_mean))
         lower = dist.cdf(self.min)
         upper = dist.cdf(self.max)

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy import stats
+from scipy.stats import norm
 from scipy.special import gammainc, gamma as gamma_function
 from scipy.special import gamma as gamma_function
 
@@ -190,6 +191,24 @@ class LogNormal:
     truncated: bool = False
     truncation_tolerance: float = 0.05
 
+    def _truncated_raw_moment(self, r: int) -> float:
+        if self.log_standard_deviation <= 0:
+            raise ValueError("log_standard_deviation must be positive")
+        _validate_bounds(self.min, self.max)
+
+        sigma = float(self.log_standard_deviation)
+        mu = float(self.log_mean)
+        lower = norm.cdf((np.log(self.min) - mu) / sigma) if self.min > 0 else 0.0
+        upper = norm.cdf((np.log(self.max) - mu) / sigma) if np.isfinite(self.max) else 1.0
+        mass = upper - lower
+        if mass <= 0:
+            raise ValueError("truncation interval has zero probability mass")
+
+        shifted_lower = norm.cdf((np.log(self.min) - mu - r * sigma * sigma) / sigma) if self.min > 0 else 0.0
+        shifted_upper = norm.cdf((np.log(self.max) - mu - r * sigma * sigma) / sigma) if np.isfinite(self.max) else 1.0
+        numerator = shifted_upper - shifted_lower
+        return float(np.exp(r * mu + 0.5 * (r**2) * sigma * sigma) * (numerator / mass))
+
     def _get_untruncated_mean(self) -> float:
         if self.log_standard_deviation <= 0:
             raise ValueError("log_standard_deviation must be positive")
@@ -202,28 +221,12 @@ class LogNormal:
         return float((np.exp(self.log_standard_deviation**2) - 1.0) * mean**2)
 
     def _get_truncated_mean(self) -> float:
-        if self.log_standard_deviation <= 0:
-            raise ValueError("log_standard_deviation must be positive")
-        _validate_bounds(self.min, self.max)
-        dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
-        lower = dist.cdf(self.min)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        return self._truncated_raw_moment(1)
 
     def _get_truncated_variance(self) -> float:
-        if self.log_standard_deviation <= 0:
-            raise ValueError("log_standard_deviation must be positive")
-        _validate_bounds(self.min, self.max)
-        dist = stats.lognorm(s=self.log_standard_deviation, scale=np.exp(self.log_mean))
-        lower = dist.cdf(self.min)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
-        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
-        return second_moment - mean**2
+        mean = self._truncated_raw_moment(1)
+        second_moment = self._truncated_raw_moment(2)
+        return float(second_moment - mean**2)
 
     def _validate_truncation(self) -> None:
         if self.log_standard_deviation <= 0:
