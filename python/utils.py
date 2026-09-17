@@ -61,13 +61,6 @@ def make_distribution(distributions_data: dict, variable_name: str):
     raise ValueError(f"Unsupported distribution: {distribution_name}")
 
 
-def get_snr(formulas_data: dict, variable_name: str):
-    if variable_name not in formulas_data:
-        raise ValueError(f"Unknown variable: {variable_name}")
-
-    return formulas_data[variable_name].get("snr")
-
-
 def _predictor_coefficients(predictors: dict[str, Any]) -> list[float]:
     coefficients: list[float] = []
     for predictor in predictors.values():

@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy import stats
+from scipy.special import gammainc, gamma as gamma_function
+from scipy.special import gamma as gamma_function
 
 
 def _as_1d_array(values) -> np.ndarray:
@@ -96,6 +98,22 @@ class Gamma:
     truncated: bool = False
     truncation_tolerance: float = 0.05
 
+    def _truncated_raw_moment(self, k: int) -> float:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        _validate_bounds(self.min, self.max)
+
+        lower = gammainc(self.shape, self.rate * self.min)
+        upper = gammainc(self.shape, self.rate * self.max)
+        mass = upper - lower
+        if mass <= 0:
+            raise ValueError("truncation interval has zero probability mass")
+
+        numerator = gammainc(self.shape + k, self.rate * self.max) - gammainc(self.shape + k, self.rate * self.min)
+        return float((self.rate ** (-k)) * (gamma_function(self.shape + k) / gamma_function(self.shape)) * (numerator / mass))
+
     def _get_untruncated_mean(self) -> float:
         if self.shape <= 0:
             raise ValueError("shape must be positive")
@@ -111,32 +129,12 @@ class Gamma:
         return float(self.shape / (self.rate**2))
 
     def _get_truncated_mean(self) -> float:
-        if self.shape <= 0:
-            raise ValueError("shape must be positive")
-        if self.rate <= 0:
-            raise ValueError("rate must be positive")
-        _validate_bounds(self.min, self.max)
-        dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
-        lower = dist.cdf(self.min)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        return self._truncated_raw_moment(1)
 
     def _get_truncated_variance(self) -> float:
-        if self.shape <= 0:
-            raise ValueError("shape must be positive")
-        if self.rate <= 0:
-            raise ValueError("rate must be positive")
-        _validate_bounds(self.min, self.max)
-        dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
-        lower = dist.cdf(self.min)
-        upper = dist.cdf(self.max)
-        if lower >= upper:
-            raise ValueError("truncation interval has zero probability mass")
-        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
-        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
-        return second_moment - mean**2
+        mean = self._truncated_raw_moment(1)
+        second_moment = self._truncated_raw_moment(2)
+        return float(second_moment - mean**2)
 
     def _validate_truncation(self) -> None:
         if self.shape <= 0:
@@ -181,6 +179,8 @@ class Gamma:
             raise ValueError("truncation interval has zero probability mass")
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(dist.ppf(uniforms))
+
+    
 @dataclass(frozen=True)
 class LogNormal:
     log_mean: float
@@ -628,3 +628,23 @@ class CategoricalOrdinal(CategoricalNominal):
 class NoneDistribution:
     def sample(self, n: int) -> np.ndarray:
         return _as_1d_array(np.array([None] * n, dtype=object))
+    def _truncated_raw_moment(self, k: int) -> float:
+        if self.shape <= 0:
+            raise ValueError("shape must be positive")
+        if self.rate <= 0:
+            raise ValueError("rate must be positive")
+        _validate_bounds(self.min, self.max)
+
+        dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
+        lower = dist.cdf(self.min)
+        upper = dist.cdf(self.max)
+        mass = upper - lower
+        if mass <= 0:
+            raise ValueError("truncation interval has zero probability mass")
+
+        numerator = gamma_function(self.shape + k)
+        denominator = gamma_function(self.shape)
+        cdf_mass = stats.gamma(a=self.shape + k, scale=1.0 / self.rate).cdf(self.max) - stats.gamma(
+            a=self.shape + k, scale=1.0 / self.rate
+        ).cdf(self.min)
+        return float((self.rate ** (-k)) * (numerator / denominator) * (cdf_mass / mass))
