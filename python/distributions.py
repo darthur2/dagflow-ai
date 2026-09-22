@@ -4,7 +4,6 @@ import numpy as np
 from scipy import stats
 from scipy.stats import norm
 from scipy.special import gammainc, gamma as gamma_function
-from scipy.special import gamma as gamma_function
 
 
 def _as_1d_array(values) -> np.ndarray:
