@@ -343,7 +343,12 @@ class Binomial:
         upper = dist.cdf(self.max)
         if lower >= upper:
             raise ValueError("truncation interval has zero probability mass")
-        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        support = np.arange(self.min, self.max + 1)
+        pmf = dist.pmf(support)
+        mass = float(np.sum(pmf))
+        if mass <= 0.0:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(np.sum(support * pmf) / mass)
 
     def _get_truncated_variance(self) -> float:
         if self.n_trials < 1:
@@ -356,8 +361,13 @@ class Binomial:
         upper = dist.cdf(self.max)
         if lower >= upper:
             raise ValueError("truncation interval has zero probability mass")
-        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
-        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
+        support = np.arange(self.min, self.max + 1)
+        pmf = dist.pmf(support)
+        mass = float(np.sum(pmf))
+        if mass <= 0.0:
+            raise ValueError("truncation interval has zero probability mass")
+        mean = float(np.sum(support * pmf) / mass)
+        second_moment = float(np.sum((support**2) * pmf) / mass)
         return second_moment - mean**2
 
     def _validate_truncation(self) -> None:
@@ -452,7 +462,12 @@ class Poisson:
         upper = dist.cdf(self.max)
         if lower >= upper:
             raise ValueError("truncation interval has zero probability mass")
-        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        support = np.arange(self.min, self.max + 1)
+        pmf = dist.pmf(support)
+        mass = float(np.sum(pmf))
+        if mass <= 0.0:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(np.sum(support * pmf) / mass)
 
     def _get_truncated_variance(self) -> float:
         if self.rate <= 0:
@@ -463,8 +478,13 @@ class Poisson:
         upper = dist.cdf(self.max)
         if lower >= upper:
             raise ValueError("truncation interval has zero probability mass")
-        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
-        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
+        support = np.arange(self.min, self.max + 1)
+        pmf = dist.pmf(support)
+        mass = float(np.sum(pmf))
+        if mass <= 0.0:
+            raise ValueError("truncation interval has zero probability mass")
+        mean = float(np.sum(support * pmf) / mass)
+        second_moment = float(np.sum((support**2) * pmf) / mass)
         return second_moment - mean**2
 
     def _validate_truncation(self) -> None:
@@ -544,7 +564,12 @@ class NegativeBinomial:
         upper = dist.cdf(self.max)
         if lower >= upper:
             raise ValueError("truncation interval has zero probability mass")
-        return float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
+        support = np.arange(self.min, self.max + 1)
+        pmf = dist.pmf(support)
+        mass = float(np.sum(pmf))
+        if mass <= 0.0:
+            raise ValueError("truncation interval has zero probability mass")
+        return float(np.sum(support * pmf) / mass)
 
     def _get_truncated_variance(self) -> float:
         if self.shape <= 0:
@@ -558,8 +583,13 @@ class NegativeBinomial:
         upper = dist.cdf(self.max)
         if lower >= upper:
             raise ValueError("truncation interval has zero probability mass")
-        mean = float(dist.expect(lambda x: x, lb=self.min, ub=self.max, conditional=True))
-        second_moment = float(dist.expect(lambda x: x * x, lb=self.min, ub=self.max, conditional=True))
+        support = np.arange(self.min, self.max + 1)
+        pmf = dist.pmf(support)
+        mass = float(np.sum(pmf))
+        if mass <= 0.0:
+            raise ValueError("truncation interval has zero probability mass")
+        mean = float(np.sum(support * pmf) / mass)
+        second_moment = float(np.sum((support**2) * pmf) / mass)
         return second_moment - mean**2
 
     def _validate_truncation(self) -> None:
@@ -637,23 +667,3 @@ class CategoricalOrdinal(CategoricalNominal):
 class NoneDistribution:
     def sample(self, n: int) -> np.ndarray:
         return _as_1d_array(np.array([None] * n, dtype=object))
-    def _truncated_raw_moment(self, k: int) -> float:
-        if self.shape <= 0:
-            raise ValueError("shape must be positive")
-        if self.rate <= 0:
-            raise ValueError("rate must be positive")
-        _validate_bounds(self.min, self.max)
-
-        dist = stats.gamma(a=self.shape, scale=1.0 / self.rate)
-        lower = dist.cdf(self.min)
-        upper = dist.cdf(self.max)
-        mass = upper - lower
-        if mass <= 0:
-            raise ValueError("truncation interval has zero probability mass")
-
-        numerator = gamma_function(self.shape + k)
-        denominator = gamma_function(self.shape)
-        cdf_mass = stats.gamma(a=self.shape + k, scale=1.0 / self.rate).cdf(self.max) - stats.gamma(
-            a=self.shape + k, scale=1.0 / self.rate
-        ).cdf(self.min)
-        return float((self.rate ** (-k)) * (numerator / denominator) * (cdf_mass / mass))
