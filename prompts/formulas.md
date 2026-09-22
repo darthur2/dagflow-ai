@@ -121,6 +121,8 @@ The JSON schema for a categorical ordinal formula is as follows:
 
 ONLY use transformations for predictors when you are specifically instructed to do so.
 
+For Beta, Gamma, Log Normal, and other bounded or positive-only responses, keep intercepts and coefficients conservative. Preserve directionality, but avoid large stacked effects that can make downstream calibration numerically infeasible.
+
 Think very carefully about magnitudes of coefficients for predictors. Choose values for coefficients that are realistic, but that will result in values of linear predictors that explode or saturate once link functions for GLMs are applied. Choose values of coefficients that make sense after accounting for the type of GLM as well as the scale of the predictor. If transformations are applied, think about the scale of the predictor after the transformation is applied. Try to choose coefficients that are large enough to provide a realistic signal and won't get washed out, but that do not result in linear predictors that explode or saturate.
 
 Always update the formula list by editing `synthdata/formulas.json`. DO NOT respond with or summarize the list to the synthesizer.

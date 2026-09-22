@@ -139,6 +139,19 @@ def _flatten_predictor_coefficients_and_names(
     return coefficients, names, transformations
 
 
+def _predictor_dimension(predictor: dict[str, Any]) -> int:
+    if "coefficient" in predictor:
+        return 1
+
+    if "reference_category" in predictor and "other_categories" in predictor:
+        other_categories = predictor.get("other_categories", {})
+        if not isinstance(other_categories, dict):
+            raise ValueError("Unsupported predictor schema")
+        return len(other_categories)
+
+    raise ValueError("Unsupported predictor schema")
+
+
 def make_beta_1(formulas_data: dict, variable_name: str):
     if variable_name not in formulas_data:
         raise ValueError(f"Unknown variable: {variable_name}")
@@ -159,8 +172,8 @@ def make_beta_1(formulas_data: dict, variable_name: str):
             predictors = category_block.get("predictors", {})
             if not isinstance(predictors, dict):
                 raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
-            coefficients, _, _ = _flatten_predictor_coefficients_and_names(predictors)
-            category_vectors.append(coefficients)
+            row_count = sum(_predictor_dimension(predictor) for predictor in predictors.values())
+            category_vectors.append(np.zeros(row_count, dtype=float))
 
         if not category_vectors:
             return np.asarray([], dtype=float)
@@ -199,7 +212,7 @@ def get_beta_0(formulas_data: dict, variable_name: str):
     raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
 
 
-def get_categories(formulas_data: dict, variable_name: str) -> list[str]:
+def get_formula_categories(formulas_data: dict, variable_name: str) -> list[str]:
     if variable_name not in formulas_data:
         raise ValueError(f"Unknown variable: {variable_name}")
 
@@ -220,6 +233,18 @@ def get_categories(formulas_data: dict, variable_name: str) -> list[str]:
         return [reference_category, *thresholds.keys()]
 
     raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
+
+
+def get_distribution_categories(distributions_data: dict, variable_name: str) -> list[str]:
+    if variable_name not in distributions_data:
+        raise ValueError(f"Unknown variable: {variable_name}")
+
+    distribution = distributions_data[variable_name]
+    categories = distribution.get("categories")
+    if not isinstance(categories, list) or len(categories) < 2:
+        raise ValueError(f"Unsupported distribution schema for variable: {variable_name}")
+
+    return [str(category) for category in categories]
 
 
 def get_dag_order(dag_data: dict) -> list[str]:

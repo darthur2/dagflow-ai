@@ -28,6 +28,8 @@ Whenever you are asked to do something by the user, you may ONLY do one of the f
 
 In either auto or interactive mode, you MUST pause after each step to run the `python/scripts/validators.py` script and then use the error report to make any fixes.
 
+When formulas fail calibration for Beta, Gamma, Log Normal, or similar responses, treat it as a sign that the formulas agent should reduce intercepts and coefficient magnitudes first, especially where several effects point in the same direction.
+
 Delegation rules:
 
 - Use `variables` to create or update a variable list

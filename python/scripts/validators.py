@@ -340,7 +340,7 @@ def _variables_formula_consistency_report(variables_data: dict[str, Any], formul
     quantitative_type_mismatches: dict[str, str] = {}
     categorical_nominal_type_mismatches: dict[str, str] = {}
     categorical_ordinal_type_mismatches: dict[str, str] = {}
-    quantitative_predictor_type_mismatches: dict[str, list[str]] = {}
+    predictor_type_mismatches: dict[str, list[str]] = {}
     categorical_predictor_type_mismatches: dict[str, list[str]] = {}
 
     for variable_name in sorted(shared_names):
@@ -360,47 +360,52 @@ def _variables_formula_consistency_report(variables_data: dict[str, Any], formul
         elif variable_type == "Categorical" and measurement_level == "Ordinal" and formula_type != "categorical_ordinal":
             categorical_ordinal_type_mismatches[variable_name] = str(formula_type)
 
-        if formula_type == "quantitative":
-            predictors = formula_item.get("predictors", {})
-            if isinstance(predictors, dict):
-                mismatches = [
-                    predictor_name
-                    for predictor_name, predictor_item in predictors.items()
-                    if isinstance(predictor_item, dict) and "reference_category" in predictor_item and "other_categories" in predictor_item
-                ]
-                if mismatches:
-                    quantitative_predictor_type_mismatches[variable_name] = sorted(mismatches)
-        elif formula_type == "categorical_nominal":
+        predictor_mismatches: set[str] = set()
+
+        def _predictor_type_is_compatible(predictor_item: dict[str, Any], predictor_variable: dict[str, Any] | None) -> bool:
+            if predictor_variable is None:
+                return True
+
+            predictor_data_type = predictor_variable.get("data_type")
+            predictor_measurement_level = predictor_variable.get("measurement_level")
+
+            if predictor_data_type == "Quantitative":
+                return isinstance(predictor_item, dict) and "coefficient" in predictor_item and "reference_category" not in predictor_item
+
+            if predictor_data_type == "Categorical" and predictor_measurement_level in {"Nominal", "Ordinal"}:
+                return isinstance(predictor_item, dict) and "reference_category" in predictor_item and "other_categories" in predictor_item
+
+            return True
+
+        def _record_predictor_mismatches(predictors: dict[str, Any]) -> None:
+            for predictor_name, predictor_item in predictors.items():
+                predictor_variable = variables_data.get(predictor_name) if isinstance(variables_data, dict) else None
+                if not isinstance(predictor_item, dict) or not _predictor_type_is_compatible(predictor_item, predictor_variable):
+                    predictor_mismatches.add(predictor_name)
+
+        if formula_type == "categorical_nominal":
             category_models = formula_item.get("category_models", {})
             if isinstance(category_models, dict):
-                mismatches: set[str] = set()
                 for category_item in category_models.values():
                     if not isinstance(category_item, dict):
                         continue
                     predictors = category_item.get("predictors", {})
                     if not isinstance(predictors, dict):
                         continue
-                    for predictor_name, predictor_item in predictors.items():
-                        if isinstance(predictor_item, dict) and "reference_category" in predictor_item and "other_categories" in predictor_item:
-                            mismatches.add(predictor_name)
-                if mismatches:
-                    categorical_predictor_type_mismatches[variable_name] = sorted(mismatches)
+                    _record_predictor_mismatches(predictors)
         elif formula_type == "categorical_ordinal":
             predictors = formula_item.get("predictors", {})
             if isinstance(predictors, dict):
-                mismatches = [
-                    predictor_name
-                    for predictor_name, predictor_item in predictors.items()
-                    if isinstance(predictor_item, dict) and "reference_category" not in predictor_item and "coefficient" not in predictor_item
-                ]
-                if mismatches:
-                    categorical_predictor_type_mismatches[variable_name] = sorted(mismatches)
+                _record_predictor_mismatches(predictors)
+
+        if predictor_mismatches:
+            predictor_type_mismatches[variable_name] = sorted(predictor_mismatches)
 
     if (
         not quantitative_type_mismatches
         and not categorical_nominal_type_mismatches
         and not categorical_ordinal_type_mismatches
-        and not quantitative_predictor_type_mismatches
+        and not predictor_type_mismatches
         and not categorical_predictor_type_mismatches
     ):
         return ValidationReport(ok=True, errors=[])
@@ -416,7 +421,7 @@ def _variables_formula_consistency_report(variables_data: dict[str, Any], formul
                     "quantitative_type_mismatches": quantitative_type_mismatches,
                     "categorical_nominal_type_mismatches": categorical_nominal_type_mismatches,
                     "categorical_ordinal_type_mismatches": categorical_ordinal_type_mismatches,
-                    "quantitative_predictor_type_mismatches": quantitative_predictor_type_mismatches,
+                    "predictor_type_mismatches": predictor_type_mismatches,
                     "categorical_predictor_type_mismatches": categorical_predictor_type_mismatches,
                 },
             )
