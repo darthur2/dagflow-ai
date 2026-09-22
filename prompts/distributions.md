@@ -74,7 +74,7 @@ You may only use the following distributions: Normal, Gamma, Log Normal, Beta, B
 
 Select the following distributions for variables labeled as continuous and quantitative: Normal, Gamma, Log Normal, Beta.
 
-Select the following distributions for variables labled as discrete and quantitative: Bernoulli, Binomial, Poisson, Negative Binomial
+Select the following distributions for variables labeled as discrete and quantitative: Bernoulli, Binomial, Poisson, Negative Binomial
 
 Select one of the following distributions for variables labeled categorical: Categorical Nominal, Categorical Ordinal
 

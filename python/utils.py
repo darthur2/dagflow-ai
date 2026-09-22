@@ -145,7 +145,7 @@ def make_beta_1(formulas_data: dict, variable_name: str):
 
     formula = formulas_data[variable_name]
 
-    if "intercept" in formula and "snr" in formula and "predictors" in formula:
+    if formula.get("type") == "quantitative":
         return np.asarray(_predictor_coefficients(formula["predictors"]), dtype=float)
 
     if formula.get("type") == "categorical_nominal":
@@ -171,22 +171,6 @@ def make_beta_1(formulas_data: dict, variable_name: str):
         coefficients, _, _ = _flatten_predictor_coefficients_and_names(formula.get("predictors", {}))
         return np.asarray(coefficients, dtype=float)
 
-    if "reference_category" in formula and "other_categories" in formula:
-        category_vectors = []
-        for category_block in formula["other_categories"].values():
-            if not isinstance(category_block, dict):
-                raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
-            category_predictors = category_block.get("predictors", {})
-            if not isinstance(category_predictors, dict):
-                raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
-            coefficients, _, _ = _flatten_predictor_coefficients_and_names(category_predictors)
-            category_vectors.append(coefficients)
-
-        if not category_vectors:
-            return np.asarray([], dtype=float)
-
-        return np.column_stack(category_vectors)
-
     raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
 
 
@@ -196,7 +180,7 @@ def get_beta_0(formulas_data: dict, variable_name: str):
 
     formula = formulas_data[variable_name]
 
-    if "intercept" in formula and "snr" in formula and "predictors" in formula:
+    if formula.get("type") == "quantitative":
         return float(formula["intercept"])
 
     if formula.get("type") == "categorical_nominal":
@@ -211,10 +195,6 @@ def get_beta_0(formulas_data: dict, variable_name: str):
         if not isinstance(thresholds, dict):
             raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
         return np.asarray([float(threshold["intercept"]) for threshold in thresholds.values() if isinstance(threshold, dict)], dtype=float)
-
-    if "reference_category" in formula and "other_categories" in formula:
-        intercepts = [float(category_block["intercept"]) for category_block in formula["other_categories"].values()]
-        return np.asarray(intercepts, dtype=float)
 
     raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
 
@@ -238,12 +218,6 @@ def get_categories(formulas_data: dict, variable_name: str) -> list[str]:
         if not isinstance(reference_category, str) or not isinstance(thresholds, dict):
             raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
         return [reference_category, *thresholds.keys()]
-
-    if "reference_category" in formula and "other_categories" in formula:
-        reference_category = formula["reference_category"]
-        if not isinstance(reference_category, str):
-            raise ValueError(f"Invalid reference category for variable: {variable_name}")
-        return [reference_category, *formula["other_categories"].keys()]
 
     raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
 

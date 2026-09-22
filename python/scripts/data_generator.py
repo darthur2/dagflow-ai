@@ -11,7 +11,6 @@ PYTHON_ROOT = Path(__file__).resolve().parents[1]
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
-from distributions import CategoricalNominal, CategoricalOrdinal
 from regressors import (
     BetaRegressor,
     BernoulliRegressor,
@@ -29,7 +28,6 @@ from utils import (
     get_beta_0,
     get_categories,
     get_dag_order,
-    get_snr,
     load_json,
     make_beta_1,
     make_distribution,
@@ -47,19 +45,28 @@ def _one_hot(values: np.ndarray, categories: list[str]) -> np.ndarray:
 def _build_parent_matrix(
     parent_names: list[str],
     samples: dict[str, np.ndarray],
-    distributions: dict[str, object],
+    variables_data: dict[str, dict],
 ) -> tuple[np.ndarray, list[str], dict[str, str]]:
     columns: list[np.ndarray] = []
     predictor_names: list[str] = []
     predictor_transformations: dict[str, str] = {}
 
     for parent_name in parent_names:
+        if parent_name not in variables_data:
+            raise ValueError(f"Missing variables metadata for parent: {parent_name}")
+
+        parent_metadata = variables_data[parent_name]
+        data_type = parent_metadata.get("data_type")
+        if data_type not in {"Quantitative", "Categorical"}:
+            raise ValueError(f"Variable '{parent_name}' must declare data_type as Quantitative or Categorical")
+
         parent_values = np.asarray(samples[parent_name])
-        parent_distribution = distributions[parent_name]
-        if parent_distribution.__class__.__name__ in {"CategoricalNominal", "CategoricalOrdinal"}:
-            categories = list(parent_distribution.categories)
+        if data_type == "Categorical":
+            categories = parent_metadata.get("categories")
+            if not isinstance(categories, list) or len(categories) < 2:
+                raise ValueError(f"Categorical parent {parent_name} must define at least 2 categories")
             if len(categories) < 2:
-                raise ValueError(f"Categorical parent {parent_name} must have at least 2 categories")
+                raise ValueError(f"Categorical parent {parent_name} must define at least 2 categories")
             encoded = _one_hot(parent_values, categories)[:, 1:]
             columns.append(encoded)
             predictor_names.extend([parent_name] * encoded.shape[1])
@@ -156,6 +163,7 @@ def _distribution_name(distribution) -> str:
 
 def generate_data(n: int = 1000) -> pd.DataFrame:
     dag_data = load_json(SYNTHDATA / "dag.json") or {}
+    variables_data = load_json(SYNTHDATA / "variables.json") or {}
     distributions_data = load_json(SYNTHDATA / "distributions.json") or {}
     formulas_data = load_json(SYNTHDATA / "formulas.json") or {}
 
@@ -184,13 +192,13 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
         if formula is None:
             raise ValueError(f"Missing formula for endogenous variable: {variable_name}")
 
-        X, predictor_names, predictor_transformations = _build_parent_matrix(parent_names, samples, distributions)
+        X, predictor_names, predictor_transformations = _build_parent_matrix(parent_names, samples, variables_data)
         distribution_name = _distribution_name(distribution)
         regressor_cls = _regressor_for_distribution_name(distribution_name)
 
         beta_0 = get_beta_0(formulas_data, variable_name)
         beta_1 = make_beta_1(formulas_data, variable_name)
-        categories = get_categories(formulas_data, variable_name) if "reference_category" in formula else None
+        categories = get_categories(formulas_data, variable_name) if formula.get("type") in {"categorical_nominal", "categorical_ordinal"} else None
 
         try:
             if distribution_name == "Normal":

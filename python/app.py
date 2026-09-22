@@ -322,8 +322,7 @@ def render_distribution_details(selected_name: str, distributions: dict) -> None
 
 def render_field_value(field_name: str, field_value) -> None:
     left_col, right_col = st.columns([1, 1.4])
-    label = "SNR" if field_name.lower() == "snr" else prettify_text(field_name)
-    left_col.write(label)
+    left_col.write(prettify_text(field_name))
     right_col.write(prettify_text(field_value))
 
 
@@ -515,7 +514,6 @@ def render_quantitative_formula(response_name: str, formula: dict, distributions
         render_field_value("Formula Type", "Quantitative")
         render_field_value("Intercept", formula.get("intercept", "Unknown"))
         render_field_value("Transformation", formula.get("transformation", "none"))
-        render_field_value("SNR", formula.get("snr", "Unknown"))
         render_section_header("Predictors")
         render_predictor_selector(formula.get("predictors", {}), response_name)
 
@@ -593,7 +591,7 @@ def render_formula_block(response_name: str, formula: dict, distributions: dict)
         st.info("No formula defined for this variable.")
         return
 
-    if "intercept" in formula and "predictors" in formula:
+    if formula.get("type") == "quantitative":
         render_quantitative_formula(response_name, formula, distributions)
         return
 

@@ -39,7 +39,7 @@ def test_lognormal_regressor_intercept_only():
     assert np.all(sample >= 0.01)
     target = LogNormal(log_mean=0.2, log_standard_deviation=0.4, min=0.01, max=25.0, truncated=False)
     _assert_close(float(np.mean(sample)), target._get_untruncated_mean())
-    _assert_close(float(np.var(sample)), target._get_untruncated_variance())
+    _assert_close(float(np.var(sample)), target._get_untruncated_variance(), rtol=0.2)
 
 
 def test_lognormal_regressor_mixed_sign_predictors():

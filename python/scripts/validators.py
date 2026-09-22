@@ -963,7 +963,6 @@ class QuantitativeFormula(BaseModel):
 
     type: Literal["quantitative"]
     intercept: float
-    snr: float
     predictors: dict[str, QuantitativePredictor | CategoricalPredictor]
 
 

@@ -4,9 +4,9 @@ import numpy as np
 from scipy import optimize, stats
 
 try:
-    from distributions import Beta, Bernoulli, Binomial, Gamma, LogNormal, NegativeBinomial, Normal, Poisson
+    from distributions import Beta, Binomial, Bernoulli, Gamma, LogNormal, NegativeBinomial, Normal, Poisson
 except ImportError:  # pragma: no cover
-    from .distributions import Beta, Bernoulli, Binomial, Gamma, LogNormal, NegativeBinomial, Normal, Poisson
+    from .distributions import Beta, Binomial, Bernoulli, Gamma, LogNormal, NegativeBinomial, Normal, Poisson
 
 
 def _validate_bounds(min_value, max_value) -> None:
@@ -72,60 +72,6 @@ def _transform_predictors(
         transformed_columns.append(np.asarray(current, dtype=float))
         transformed_names.append(name)
     return np.column_stack(transformed_columns), transformed_names
-
-
-def _gamma_moments(mu: np.ndarray, shape: float) -> tuple[float, float, float]:
-    mean_mu = float(mu.mean())
-    mean_mu2 = float((mu**2).mean())
-    var_mu = mean_mu2 - mean_mu**2
-    e_var = mean_mu2 / shape
-    return mean_mu, var_mu, e_var
-
-
-def _lognormal_moments(log_mean: np.ndarray, log_standard_deviation: float) -> tuple[float, float, float]:
-    sigma2 = float(log_standard_deviation**2)
-    m1 = float(np.exp(log_mean).mean())
-    m2 = float(np.exp(2.0 * log_mean).mean())
-    mean_y = float(np.exp(0.5 * sigma2) * m1)
-    var_e = float(np.exp(sigma2) * (m2 - m1**2))
-    e_var = float(np.exp(sigma2) * (np.exp(sigma2) - 1.0) * m2)
-    return mean_y, var_e, e_var
-
-
-def _beta_moments(mu: np.ndarray, phi: float) -> tuple[float, float, float]:
-    mean_mu = float(mu.mean())
-    var_mu = float(mu.var())
-    e_var = float((mu * (1.0 - mu)).mean() / (phi + 1.0))
-    return mean_mu, var_mu, e_var
-
-
-def _bernoulli_moments(mu: np.ndarray) -> tuple[float, float, float]:
-    mean_mu = float(mu.mean())
-    var_mu = float(mu.var())
-    e_var = float((mu * (1.0 - mu)).mean())
-    return mean_mu, var_mu, e_var
-
-
-def _binomial_moments(mu: np.ndarray, n_trials: int) -> tuple[float, float, float]:
-    mean_mu = float((n_trials * mu).mean())
-    var_mu = float((n_trials * mu).var())
-    e_var = float((n_trials * mu * (1.0 - mu)).mean())
-    return mean_mu, var_mu, e_var
-
-
-def _poisson_moments(lam: np.ndarray) -> tuple[float, float, float]:
-    mean_lam = float(lam.mean())
-    var_lam = float(lam.var())
-    e_var = float(lam.mean())
-    return mean_lam, var_lam, e_var
-
-
-def _negative_binomial_moments(mu: np.ndarray, shape: float) -> tuple[float, float, float]:
-    mean_mu = float(mu.mean())
-    mean_mu2 = float((mu**2).mean())
-    var_mu = mean_mu2 - mean_mu**2
-    e_var = float(mean_mu + mean_mu2 / shape)
-    return mean_mu, var_mu, e_var
 
 
 @dataclass(frozen=True)
@@ -481,7 +427,9 @@ class BetaRegressor(Beta):
             beta_0, log_phi = params
             phi = float(np.exp(log_phi))
             mu = self._mu(beta_0)
-            mean_mu, var_mu, e_var = _beta_moments(mu, phi)
+            mean_mu = float(mu.mean())
+            var_mu = float(mu.var())
+            e_var = float((mu * (1.0 - mu)).mean() / (phi + 1.0))
             total_var = var_mu + e_var
             if not np.all(np.isfinite([mean_mu, var_mu, e_var, total_var])):
                 return np.array([1e6, 1e6], dtype=float)
@@ -529,89 +477,6 @@ class BetaRegressor(Beta):
         beta_param = self.phi * (1.0 - mu)
         samples = stats.beta.rvs(alpha, beta_param, size=n)
         return _as_1d_array(self.min + (self.max - self.min) * samples)
-
-
-@dataclass(frozen=True, kw_only=True)
-class BernoulliRegressor(Bernoulli):
-    X: np.ndarray
-    beta_1: np.ndarray
-    predictor_names: list[str] | None = None
-    predictor_transformations: dict[str, str] | None = None
-    beta_0: float | None = None
-
-    def __post_init__(self) -> None:
-        X = np.asarray(self.X, dtype=float)
-        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
-        if X.ndim != 2:
-            raise ValueError("X must be a 2D regression matrix")
-        if X.shape[1] != beta_1.shape[0]:
-            raise ValueError("beta_1 must have one coefficient per column in X")
-        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
-        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
-        object.__setattr__(self, "X", X)
-        object.__setattr__(self, "beta_1", beta_1)
-        object.__setattr__(self, "predictor_names", predictor_names)
-
-    def calibrate(self) -> "BernoulliRegressor":
-        return self._calibrate_untruncated()
-
-    def _mu(self, beta_0: float) -> np.ndarray:
-        return 1.0 / (1.0 + np.exp(-(beta_0 + self.X @ self.beta_1)))
-
-    def _calibrate_untruncated(self) -> "BernoulliRegressor":
-        target_mean = self.success_prob
-        if not np.isfinite(target_mean) or target_mean <= 0.0 or target_mean >= 1.0:
-            raise ValueError(
-                "Unable to calibrate BernoulliRegressor: success_prob must be finite and strictly between 0 and 1; "
-                f"success_prob={target_mean:.6g}"
-            )
-
-        predictor_linear = self.X @ self.beta_1
-        if not np.all(np.isfinite(predictor_linear)):
-            raise ValueError(
-                "Unable to calibrate BernoulliRegressor: X @ beta_1 must be finite; "
-                f"X_shape={self.X.shape}, beta_1_shape={self.beta_1.shape}"
-            )
-
-        beta_0_guess = float(np.log(target_mean / max(1.0 - target_mean, np.finfo(float).tiny)))
-
-        def moments(params: np.ndarray) -> np.ndarray:
-            beta_0 = float(params[0])
-            mu = self._mu(beta_0)
-            mean_mu, _, _ = _bernoulli_moments(mu)
-            if not np.isfinite(mean_mu):
-                return np.array([1e6], dtype=float)
-            return np.array([mean_mu - target_mean], dtype=float)
-
-        result = optimize.least_squares(
-            moments,
-            x0=np.array([beta_0_guess], dtype=float),
-            bounds=([-np.inf], [np.inf]),
-        )
-
-        if not result.success:
-            raise ValueError(
-                "Unable to calibrate BernoulliRegressor: nonlinear solve failed; "
-                f"message={result.message}; success_prob={target_mean:.6g}, "
-                f"X_shape={self.X.shape}, beta_1_shape={self.beta_1.shape}, residual_norm={np.linalg.norm(result.fun):.6g}"
-            )
-
-        beta_0 = result.x[0]
-        return BernoulliRegressor(
-            success_prob=self.success_prob,
-            X=self.X,
-            beta_1=self.beta_1,
-            predictor_names=self.predictor_names,
-            predictor_transformations=None,
-            beta_0=float(beta_0),
-        )
-
-    def sample(self, n: int) -> np.ndarray:
-        if self.beta_0 is None:
-            raise ValueError("BernoulliRegressor must be calibrated before sampling")
-
-        mu = np.repeat(self._mu(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
-        return _as_1d_array(stats.bernoulli.rvs(mu, size=n))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -668,7 +533,7 @@ class BinomialRegressor(Binomial):
         def moments(params: np.ndarray) -> np.ndarray:
             beta_0 = float(params[0])
             mu = self._mu(beta_0)
-            mean_y, var_y, e_var = _binomial_moments(mu, self.n_trials)
+            mean_y = float((self.n_trials * mu).mean())
             if not np.isfinite(mean_y):
                 return np.array([1e6], dtype=float)
             return np.array([mean_y - target_mean], dtype=float)
@@ -714,6 +579,89 @@ class BinomialRegressor(Binomial):
             raise ValueError("truncation interval has zero probability mass")
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(stats.binom.ppf(uniforms, self.n_trials, mu))
+
+
+@dataclass(frozen=True, kw_only=True)
+class BernoulliRegressor(Bernoulli):
+    X: np.ndarray
+    beta_1: np.ndarray
+    predictor_names: list[str] | None = None
+    predictor_transformations: dict[str, str] | None = None
+    beta_0: float | None = None
+
+    def __post_init__(self) -> None:
+        X = np.asarray(self.X, dtype=float)
+        beta_1 = np.asarray(self.beta_1, dtype=float).reshape(-1)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        if X.shape[1] != beta_1.shape[0]:
+            raise ValueError("beta_1 must have one coefficient per column in X")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "beta_1", beta_1)
+        object.__setattr__(self, "predictor_names", predictor_names)
+
+    def calibrate(self) -> "BernoulliRegressor":
+        return self._calibrate_untruncated()
+
+    def _mu(self, beta_0: float) -> np.ndarray:
+        return 1.0 / (1.0 + np.exp(-(beta_0 + self.X @ self.beta_1)))
+
+    def _calibrate_untruncated(self) -> "BernoulliRegressor":
+        target_mean = self.success_prob
+        if not np.isfinite(target_mean) or target_mean <= 0.0 or target_mean >= 1.0:
+            raise ValueError(
+                "Unable to calibrate BernoulliRegressor: success_prob must be finite and strictly between 0 and 1; "
+                f"success_prob={target_mean:.6g}"
+            )
+
+        predictor_linear = self.X @ self.beta_1
+        if not np.all(np.isfinite(predictor_linear)):
+            raise ValueError(
+                "Unable to calibrate BernoulliRegressor: X @ beta_1 must be finite; "
+                f"X_shape={self.X.shape}, beta_1_shape={self.beta_1.shape}"
+            )
+
+        beta_0_guess = float(np.log(target_mean / max(1.0 - target_mean, np.finfo(float).tiny)))
+
+        def moments(params: np.ndarray) -> np.ndarray:
+            beta_0 = float(params[0])
+            mu = self._mu(beta_0)
+            mean_mu = float(mu.mean())
+            if not np.isfinite(mean_mu):
+                return np.array([1e6], dtype=float)
+            return np.array([mean_mu - target_mean], dtype=float)
+
+        result = optimize.least_squares(
+            moments,
+            x0=np.array([beta_0_guess], dtype=float),
+            bounds=([-np.inf], [np.inf]),
+        )
+
+        if not result.success:
+            raise ValueError(
+                "Unable to calibrate BernoulliRegressor: nonlinear solve failed; "
+                f"message={result.message}; success_prob={target_mean:.6g}, "
+                f"X_shape={self.X.shape}, beta_1_shape={self.beta_1.shape}, residual_norm={np.linalg.norm(result.fun):.6g}"
+            )
+
+        beta_0 = result.x[0]
+        return BernoulliRegressor(
+            success_prob=self.success_prob,
+            X=self.X,
+            beta_1=self.beta_1,
+            predictor_names=self.predictor_names,
+            predictor_transformations=None,
+            beta_0=float(beta_0),
+        )
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.beta_0 is None:
+            raise ValueError("BernoulliRegressor must be calibrated before sampling")
+
+        mu = np.repeat(self._mu(self.beta_0), int(np.ceil(n / len(self.X))))[:n]
+        return _as_1d_array(stats.bernoulli.rvs(mu, size=n))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -765,7 +713,7 @@ class PoissonRegressor(Poisson):
         def moments(params: np.ndarray) -> np.ndarray:
             beta_0 = float(params[0])
             lam = self._lambda(beta_0)
-            mean_lam, var_lam, e_var = _poisson_moments(lam)
+            mean_lam = float(lam.mean())
             if not np.isfinite(mean_lam):
                 return np.array([1e6], dtype=float)
             return np.array([mean_lam - target_mean], dtype=float)
@@ -869,7 +817,7 @@ class NegativeBinomialRegressor(NegativeBinomial):
             beta_0, log_shape = params
             shape = float(np.exp(log_shape))
             mu = self._mu(beta_0)
-            mean_mu, var_mu, e_var = _negative_binomial_moments(mu, shape)
+            mean_mu = float(mu.mean())
             mean_mu2 = float((mu**2).mean())
             total_var = mean_mu + (1.0 + 1.0 / shape) * mean_mu2 - mean_mu**2
             if not np.all(np.isfinite([mean_mu, total_var])):
