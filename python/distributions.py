@@ -275,14 +275,6 @@ class Beta:
     min: float
     max: float
 
-    def sample(self, n: int) -> np.ndarray:
-        if self.shape_1 <= 0 or self.shape_2 <= 0:
-            raise ValueError("shape parameters must be positive")
-        _validate_bounds(self.min, self.max)
-
-        samples = stats.beta.rvs(self.shape_1, self.shape_2, size=n)
-        return _as_1d_array(self.min + (self.max - self.min) * samples)
-
     def get_unit_mean(self) -> float:
         if self.shape_1 <= 0 or self.shape_2 <= 0:
             raise ValueError("shape parameters must be positive")
@@ -307,6 +299,14 @@ class Beta:
 
     def get_variance(self) -> float:
         return self.get_scaled_variance()
+
+    def sample(self, n: int) -> np.ndarray:
+        if self.shape_1 <= 0 or self.shape_2 <= 0:
+            raise ValueError("shape parameters must be positive")
+        _validate_bounds(self.min, self.max)
+
+        samples = stats.beta.rvs(self.shape_1, self.shape_2, size=n)
+        return _as_1d_array(self.min + (self.max - self.min) * samples)
 
 
 @dataclass(frozen=True)
@@ -409,20 +409,22 @@ class Binomial:
 class Bernoulli:
     success_prob: float
 
+    def get_mean(self) -> float:
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        return float(self.success_prob)
+
+    def get_variance(self) -> float:
+        if not 0.0 <= self.success_prob <= 1.0:
+            raise ValueError("success_prob must be in [0, 1]")
+        return float(self.success_prob * (1.0 - self.success_prob))
+
     def sample(self, n: int) -> np.ndarray:
         if not 0.0 <= self.success_prob <= 1.0:
             raise ValueError("success_prob must be in [0, 1]")
         return _as_1d_array(stats.bernoulli.rvs(self.success_prob, size=n))
 
-    def target_mean(self) -> float:
-        if not 0.0 <= self.success_prob <= 1.0:
-            raise ValueError("success_prob must be in [0, 1]")
-        return float(self.success_prob)
-
-    def target_variance(self) -> float:
-        if not 0.0 <= self.success_prob <= 1.0:
-            raise ValueError("success_prob must be in [0, 1]")
-        return float(self.success_prob * (1.0 - self.success_prob))
+    
 @dataclass(frozen=True)
 class Poisson:
     rate: float
@@ -504,6 +506,8 @@ class Poisson:
             raise ValueError("truncation interval has zero probability mass")
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(dist.ppf(uniforms))
+
+    
 @dataclass(frozen=True)
 class NegativeBinomial:
     shape: float
@@ -602,6 +606,8 @@ class NegativeBinomial:
             raise ValueError("truncation interval has zero probability mass")
         uniforms = np.random.uniform(lower, upper, size=n)
         return _as_1d_array(dist.ppf(uniforms))
+
+    
 @dataclass(frozen=True)
 class CategoricalNominal:
     categories: list[str]

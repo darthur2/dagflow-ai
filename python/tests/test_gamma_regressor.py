@@ -104,3 +104,39 @@ def test_gamma_regressor_large_monte_carlo_sample():
     assert np.all(sample >= 0.0)
     _assert_close(float(np.mean(sample)), 6.0 / 3.0, rtol=0.15)
     _assert_close(float(np.var(sample)), 6.0 / (3.0**2), rtol=0.15)
+
+
+def test_gamma_regressor_samples_without_calibration_are_truncated():
+    X = np.zeros((25, 1), dtype=float)
+    regressor = GammaRegressor(
+        shape=2.5,
+        rate=1.5,
+        min=0.25,
+        max=4.0,
+        truncated=False,
+        X=X,
+        beta_0=0.2,
+        beta_1=np.array([0.0], dtype=float),
+    )
+
+    sample = regressor.sample(2000)
+    assert sample.shape == (2000,)
+    assert np.all(sample >= 0.25)
+    assert np.all(sample <= 4.0)
+
+
+def test_gamma_regressor_calibrate_overrides_supplied_beta_0():
+    X = np.zeros((40, 1), dtype=float)
+    regressor = GammaRegressor(
+        shape=3.0,
+        rate=2.0,
+        min=0.0,
+        max=100.0,
+        truncated=False,
+        X=X,
+        beta_0=-5.0,
+        beta_1=np.array([0.0], dtype=float),
+    )
+
+    calibrated = regressor.calibrate()
+    assert not np.isclose(calibrated.beta_0, -5.0)

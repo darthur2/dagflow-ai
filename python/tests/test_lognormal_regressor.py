@@ -88,3 +88,37 @@ def test_lognormal_truncation_sanity():
     dist = LogNormal(log_mean=0.0, log_standard_deviation=0.5, min=0.01, max=100.0, truncated=True)
     _assert_close(dist._get_truncated_mean(), dist._get_untruncated_mean(), rtol=1e-3)
     _assert_close(dist._get_truncated_variance(), dist._get_untruncated_variance(), rtol=1e-3)
+
+
+def test_lognormal_regressor_samples_without_calibration_are_truncated():
+    X = np.zeros((25, 1), dtype=float)
+    regressor = LogNormalRegressor(
+        log_mean=0.2,
+        log_standard_deviation=0.4,
+        min=0.01,
+        max=6.0,
+        X=X,
+        beta_1=np.array([0.0], dtype=float),
+        beta_0=0.2,
+    )
+
+    sample = regressor.sample(2000)
+    assert sample.shape == (2000,)
+    assert np.all(sample >= 0.01)
+    assert np.all(sample <= 6.0)
+
+
+def test_lognormal_regressor_calibrate_overrides_supplied_beta_0():
+    X = np.zeros((40, 1), dtype=float)
+    regressor = LogNormalRegressor(
+        log_mean=0.2,
+        log_standard_deviation=0.4,
+        min=0.01,
+        max=25.0,
+        X=X,
+        beta_1=np.array([0.0], dtype=float),
+        beta_0=-10.0,
+    )
+
+    calibrated = regressor.calibrate()
+    assert not np.isclose(calibrated.beta_0, -10.0)
