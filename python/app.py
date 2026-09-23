@@ -279,13 +279,12 @@ def render_distribution_selector(distributions: dict) -> str:
 def render_category_probability_table(categories: list, probabilities: list) -> None:
     rows = []
     for category, probability in zip(categories, probabilities):
-        rows.append({"Category": category, "Probability": format_numeric_value(probability)})
+        rows.append({"Category": prettify_text(category), "Probability": format_numeric_value(probability)})
     st.table(rows)
 
 
 def render_distribution_details(selected_name: str, distributions: dict) -> None:
     item = dict(distributions[selected_name])
-    item["__name__"] = selected_name
     details_key = f"distribution_details_{selected_name}"
     left, right = st.columns([1, 1.4])
 
@@ -313,7 +312,7 @@ def render_distribution_details(selected_name: str, distributions: dict) -> None
         with st.container(border=False):
             st.markdown(f"<div data-distribution-details='{details_key}'></div>", unsafe_allow_html=True)
             chart_placeholder = st.empty()
-            chart = build_distribution_chart(item)
+            chart = build_distribution_chart(item, prettify_text(selected_name))
             if chart is None:
                 chart_placeholder.info("No chart available for this distribution.")
             else:
@@ -615,10 +614,9 @@ def render_formulas_tab(formulas_data, distributions_data) -> None:
     render_formula_block(response_name, formulas_by_name[response_name], distributions_data)
 
 
-def build_distribution_chart(item: dict):
+def build_distribution_chart(item: dict, chart_title: str | None = None):
     distribution_name = item.get("distribution", "")
     parameters = {key: value for key, value in item.items() if key != "distribution"}
-    chart_title = item.get("__name__")
 
     if distribution_name in {"Normal", "Gamma", "Log Normal", "Beta"}:
         return build_truncated_density_chart(distribution_name, parameters, chart_title)
@@ -774,14 +772,14 @@ def build_categorical_chart(parameters: dict, chart_title: str | None = None):
         return None
 
     values = [
-        {"category": category, "probability": float(probability)}
+        {"category": prettify_text(category), "probability": float(probability)}
         for category, probability in zip(categories, probabilities)
     ]
     return (
         alt.Chart(alt.Data(values=values))
         .mark_bar(color="#2E86DE")
         .encode(
-            x=alt.X("category:N", title="Category", sort=None),
+            x=alt.X("category:N", title="Category", sort=None, axis=alt.Axis(labelAngle=-45)),
             y=alt.Y("probability:Q", title="Probability"),
             tooltip=[alt.Tooltip("category:N", title="Category"), alt.Tooltip("probability:Q", title="Probability")],
         )
