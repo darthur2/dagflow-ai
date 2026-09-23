@@ -54,6 +54,11 @@ def infer_column_order(df) -> list[str]:
     return list(df.columns)
 
 
+def prettified_column_options(column_names: list[str]) -> tuple[list[str], dict[str, str]]:
+    labels = [prettify_text(name) for name in column_names]
+    return labels, {label: name for label, name in zip(labels, column_names)}
+
+
 def infer_numeric_columns(df, variables_data: dict | None = None) -> set[str]:
     numeric_columns = set(df.select_dtypes(include=[np.number]).columns)
     if not variables_data:
@@ -83,6 +88,28 @@ def is_categorical_column(column_name: str, df, numeric_columns: set[str], varia
     return column_name not in numeric_columns
 
 
+def is_categorical_for_bivariate(column_name: str, df, numeric_columns: set[str], variables_data: dict | None = None) -> bool:
+    if is_categorical_column(column_name, df, numeric_columns, variables_data):
+        return True
+
+    if is_discrete_numeric_column(column_name, variables_data):
+        distinct_values = df[column_name].dropna().nunique()
+        return distinct_values <= 5
+
+    return False
+
+
+def is_categorical_for_univariate(column_name: str, df, numeric_columns: set[str], variables_data: dict | None = None) -> bool:
+    if is_categorical_column(column_name, df, numeric_columns, variables_data):
+        return True
+
+    if is_discrete_numeric_column(column_name, variables_data):
+        distinct_values = df[column_name].dropna().nunique()
+        return distinct_values <= 5
+
+    return False
+
+
 def get_domain_order(column_name: str, df, variables_data: dict | None = None, distributions_data: dict | None = None) -> list[str]:
     if distributions_data and column_name in distributions_data:
         categories = distributions_data[column_name].get("categories")
@@ -104,12 +131,13 @@ def dataframe_value_counts(df, column_name: str, order: list[str]) -> list[dict]
 
 def build_univariate_chart(df, column_name: str, is_categorical: bool, is_discrete: bool, order: list[str] | None = None):
     if is_categorical:
-        values = dataframe_value_counts(df, column_name, order or get_domain_order(column_name, df))
+        order = order or get_domain_order(column_name, df)
+        values = [{"category": prettify_text(category), "count": int(df[column_name].astype(str).eq(category).sum())} for category in order]
         return (
             alt.Chart(alt.Data(values=values))
             .mark_bar(color="#2E86DE")
             .encode(
-                x=alt.X("category:N", title=prettify_text(column_name), sort=order or None),
+                x=alt.X("category:N", title=prettify_text(column_name), sort=[prettify_text(category) for category in order], axis=alt.Axis(labelAngle=-45)),
                 y=alt.Y("count:Q", title="Count"),
                 tooltip=[alt.Tooltip("category:N", title="Category"), alt.Tooltip("count:Q", title="Count")],
             )
@@ -117,14 +145,13 @@ def build_univariate_chart(df, column_name: str, is_categorical: bool, is_discre
         )
 
     if is_discrete:
-        values = dataframe_value_counts(df, column_name, order or get_domain_order(column_name, df))
         return (
-            alt.Chart(alt.Data(values=values))
+            alt.Chart(df)
             .mark_bar(color="#2E86DE")
             .encode(
-                x=alt.X("category:N", title=prettify_text(column_name), sort=order or None),
-                y=alt.Y("count:Q", title="Count"),
-                tooltip=[alt.Tooltip("category:N", title="Value"), alt.Tooltip("count:Q", title="Count")],
+                x=alt.X(f"{column_name}:Q", bin=alt.Bin(step=1), title=prettify_text(column_name)),
+                y=alt.Y("count()", title="Count"),
+                tooltip=[alt.Tooltip("count()", title="Count")],
             )
             .properties(height=360, title=prettify_text(column_name))
         )
@@ -133,29 +160,13 @@ def build_univariate_chart(df, column_name: str, is_categorical: bool, is_discre
     if values.empty:
         return None
 
-    counts, bin_edges = np.histogram(values.to_numpy(), bins=30)
-    histogram_data = [
-        {
-            "bin_start": float(bin_edges[idx]),
-            "bin_end": float(bin_edges[idx + 1]),
-            "bin_label": f"{bin_edges[idx]:.0f} - {bin_edges[idx + 1]:.0f}",
-            "count": int(counts[idx]),
-        }
-        for idx in range(len(counts))
-        if counts[idx] > 0
-    ]
-
     return (
-        alt.Chart(alt.Data(values=histogram_data))
+        alt.Chart(df)
         .mark_bar(color="#2E86DE")
         .encode(
-            x=alt.X("bin_label:N", title=prettify_text(column_name), sort=None),
-            y=alt.Y("count:Q", title="Count"),
-            tooltip=[
-                alt.Tooltip("bin_start:Q", title="Bin Start"),
-                alt.Tooltip("bin_end:Q", title="Bin End"),
-                alt.Tooltip("count:Q", title="Count"),
-            ],
+            x=alt.X(f"{column_name}:Q", bin=alt.Bin(maxbins=20), title=prettify_text(column_name)),
+            y=alt.Y("count()", title="Count"),
+            tooltip=[alt.Tooltip("count()", title="Count")],
         )
         .properties(height=360, title=prettify_text(column_name))
     )
@@ -177,36 +188,46 @@ def build_bivariate_chart(df, x_name: str, y_name: str, x_is_categorical: bool, 
     if x_is_categorical and y_is_categorical:
         x_order = get_domain_order(x_name, df, variables_data, distributions_data)
         y_order = get_domain_order(y_name, df, variables_data, distributions_data)
+        x_display = f"{x_name}__display"
+        y_display = f"{y_name}__display"
         chart_data = df.copy()
-        chart_data[x_name] = chart_data[x_name].astype(str)
-        chart_data[y_name] = chart_data[y_name].astype(str)
-        return (
-            alt.Chart(chart_data)
-            .mark_bar()
-            .encode(
-                x=alt.X(f"{x_name}:N", title=prettify_text(x_name), sort=x_order),
-                xOffset=alt.XOffset(f"{y_name}:N", sort=y_order),
-                y=alt.Y("count():Q", title="Count"),
-                color=alt.Color(f"{y_name}:N", title=prettify_text(y_name), sort=y_order),
-                tooltip=[alt.Tooltip(f"{x_name}:N", title=prettify_text(x_name)), alt.Tooltip(f"{y_name}:N", title=prettify_text(y_name)), alt.Tooltip("count():Q", title="Count")],
-            )
-            .properties(height=360, title=f"{prettify_text(x_name)} by {prettify_text(y_name)}")
-        )
+        chart_data[x_display] = chart_data[x_name].astype(str).map(prettify_text)
+        chart_data[y_display] = chart_data[y_name].astype(str).map(prettify_text)
+        x_display_order = [prettify_text(category) for category in x_order]
+        y_display_order = [prettify_text(category) for category in y_order]
+        return build_bivariate_categorical_chart(chart_data, x_display, y_display, x_display_order, y_display_order, prettify_text(x_name), prettify_text(y_name))
 
     categorical_name = x_name if x_is_categorical else y_name
     quantitative_name = y_name if x_is_categorical else x_name
     category_order = get_domain_order(categorical_name, df, variables_data, distributions_data)
     chart_data = df.copy()
-    chart_data[categorical_name] = chart_data[categorical_name].astype(str)
+    categorical_display = f"{categorical_name}__display"
+    chart_data[categorical_display] = chart_data[categorical_name].astype(str).map(prettify_text)
+    display_order = [prettify_text(category) for category in category_order]
     return (
         alt.Chart(chart_data)
         .mark_boxplot(color="#2E86DE")
         .encode(
-            x=alt.X(f"{categorical_name}:N", title=prettify_text(categorical_name), sort=category_order),
+            x=alt.X(f"{categorical_display}:N", title=prettify_text(categorical_name), sort=display_order, axis=alt.Axis(labelAngle=-45)),
             y=alt.Y(f"{quantitative_name}:Q", title=prettify_text(quantitative_name)),
-            tooltip=[alt.Tooltip(f"{categorical_name}:N", title=prettify_text(categorical_name)), alt.Tooltip(f"{quantitative_name}:Q", title=prettify_text(quantitative_name))],
+            tooltip=[alt.Tooltip(f"{categorical_display}:N", title=prettify_text(categorical_name)), alt.Tooltip(f"{quantitative_name}:Q", title=prettify_text(quantitative_name))],
         )
         .properties(height=360, title=f"{prettify_text(quantitative_name)} by {prettify_text(categorical_name)}")
+    )
+
+
+def build_bivariate_categorical_chart(df, x_name: str, y_name: str, x_order: list[str], y_order: list[str], x_title: str, y_title: str):
+    return (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X(f"{x_name}:N", title=x_title, sort=x_order, axis=alt.Axis(labelAngle=-45)),
+            xOffset=alt.XOffset(f"{y_name}:N", sort=y_order),
+            y=alt.Y("count():Q", title="Count"),
+            color=alt.Color(f"{y_name}:N", title=y_title, sort=y_order),
+            tooltip=[alt.Tooltip(f"{x_name}:N", title=x_title), alt.Tooltip(f"{y_name}:N", title=y_title), alt.Tooltip("count():Q", title="Count")],
+        )
+        .properties(height=360, title=f"{x_title} by {y_title}")
     )
 
 
@@ -225,11 +246,13 @@ def render_data_tab(df, variables_data: dict | None = None, distributions_data: 
     data_tabs = st.tabs(["Univariate", "Bivariate"])
     numeric_columns = infer_numeric_columns(df, variables_data)
     column_order = infer_column_order(df)
+    column_labels, column_label_to_name = prettified_column_options(column_order)
 
     with data_tabs[0]:
         st.subheader("Univariate")
-        selected_column = st.selectbox("Select a variable", column_order, key="data_univariate_select")
-        categorical = is_categorical_column(selected_column, df, numeric_columns, variables_data)
+        selected_column_label = st.selectbox("Select a variable", column_labels, key="data_univariate_select")
+        selected_column = column_label_to_name[selected_column_label]
+        categorical = is_categorical_for_univariate(selected_column, df, numeric_columns, variables_data)
         discrete = is_discrete_numeric_column(selected_column, variables_data)
         order = get_domain_order(selected_column, df, variables_data, distributions_data) if categorical else None
         st.altair_chart(build_univariate_chart(df, selected_column, categorical, discrete, order), use_container_width=True)
@@ -238,12 +261,15 @@ def render_data_tab(df, variables_data: dict | None = None, distributions_data: 
         st.subheader("Bivariate")
         left_col, right_col = st.columns(2)
         with left_col:
-            x_column = st.selectbox("Select x variable", column_order, key="data_bivariate_x")
+            x_column_label = st.selectbox("Select x variable", column_labels, key="data_bivariate_x")
+            x_column = column_label_to_name[x_column_label]
         with right_col:
-            y_column = st.selectbox("Select y variable", column_order, key="data_bivariate_y")
+            y_column_label = st.selectbox("Select y variable", column_labels, key="data_bivariate_y")
+            y_column = column_label_to_name[y_column_label]
 
-        x_categorical = is_categorical_column(x_column, df, numeric_columns, variables_data)
-        y_categorical = is_categorical_column(y_column, df, numeric_columns, variables_data)
+        x_categorical = is_categorical_for_bivariate(x_column, df, numeric_columns, variables_data)
+        y_categorical = is_categorical_for_bivariate(y_column, df, numeric_columns, variables_data)
+
         st.altair_chart(
             build_bivariate_chart(df, x_column, y_column, x_categorical, y_categorical, variables_data, distributions_data),
             use_container_width=True,
@@ -386,6 +412,47 @@ def render_predictor_block(predictor_name: str, predictor: dict) -> None:
             render_field_value(field_name, field_value)
 
 
+def build_predictor_rows(predictors: dict) -> list[dict]:
+    rows = []
+    for predictor_name, predictor in predictors.items():
+        if "coefficient" in predictor:
+            rows.append(
+                {
+                    "Variable": prettify_text(predictor_name),
+                    "Transformation": predictor.get("transformation", "none"),
+                    "Coefficient": format_numeric_value(predictor.get("coefficient", "Unknown")),
+                }
+            )
+            continue
+
+        if "reference_category" in predictor and "other_categories" in predictor:
+            rows.append(
+                {
+                    "Variable": f"{prettify_text(predictor_name)}: {prettify_text(predictor.get('reference_category', 'Unknown'))}",
+                    "Transformation": "none",
+                    "Coefficient": "Reference",
+                }
+            )
+            for category_name, category_data in predictor.get("other_categories", {}).items():
+                rows.append(
+                    {
+                        "Variable": f"{prettify_text(predictor_name)}: {prettify_text(category_name)}",
+                        "Transformation": category_data.get("transformation", "none"),
+                        "Coefficient": format_numeric_value(category_data.get("coefficient", "Unknown")),
+                    }
+                )
+            continue
+
+        rows.append(
+            {
+                "Variable": prettify_text(predictor_name),
+                "Transformation": predictor.get("transformation", "none"),
+                "Coefficient": "See formula",
+            }
+        )
+    return rows
+
+
 def format_term_name(name: str, transformation: str | None = None) -> str:
     if transformation and transformation != "none":
         return f"{transformation}({name})"
@@ -407,6 +474,29 @@ def format_formula_terms(terms: list[str]) -> str:
         else:
             formatted.append(f"+ {term}")
     return " ".join(formatted)
+
+
+def get_formula_target(response_name: str, distribution_name: str | None, formula: dict, selected_category: str | None = None) -> str:
+    distribution_name = distribution_name or ""
+    if distribution_name in {"Normal"}:
+        return f"E[{response_name}|x]"
+    if distribution_name in {"Gamma", "Log Normal", "Poisson", "Negative Binomial"}:
+        return f"log(E[{response_name}|x])"
+    if distribution_name in {"Beta", "Bernoulli"}:
+        return f"logit(E[{response_name}|x])"
+    if distribution_name == "Binomial":
+        return f"logit(E[{response_name}|x])"
+
+    formula_type = formula.get("type")
+    if formula_type == "categorical_nominal":
+        category = selected_category or "category"
+        return f"logit(P({response_name} = {category}|x))"
+
+    if formula_type == "categorical_ordinal":
+        category = selected_category or "category"
+        return f"logit(P({response_name} <= {category}|x))"
+
+    return response_name
 
 
 def format_formula_multiline(formula_text: str) -> str:
@@ -446,38 +536,40 @@ def expand_predictors_for_display(predictors: dict) -> list[str]:
 
 
 def build_formula_string(response_name: str, formula: dict, distributions: dict, selected_category: str | None = None) -> str:
+    distribution_name = distributions.get(response_name, {}).get("distribution") if isinstance(distributions, dict) else None
+    target = get_formula_target(response_name, distribution_name, formula, selected_category)
     if "intercept" in formula and "predictors" in formula:
         terms = [format_numeric_value(formula.get("intercept", "0"))]
         terms.extend(expand_predictors_for_display(formula.get("predictors", {})))
-        return f"{response_name} ~ " + format_formula_terms(terms)
+        return f"{target} ~ " + format_formula_terms(terms)
 
     if formula.get("type") == "categorical_nominal":
         category_models = formula.get("category_models", {})
         if not isinstance(category_models, dict):
-            return f"{response_name} ~ Unknown"
+            return f"{target} ~ Unknown"
         category_name = selected_category or next(iter(category_models.keys()), None)
         if category_name is None:
-            return f"{response_name} ~ Unknown"
+            return f"{target} ~ Unknown"
 
         category_block = category_models[category_name]
         terms = [format_numeric_value(category_block.get("intercept", "0"))]
         terms.extend(expand_predictors_for_display(category_block.get("predictors", {})))
-        return f"{response_name} ~ " + format_formula_terms(terms)
+        return f"{target} ~ " + format_formula_terms(terms)
 
     if formula.get("type") == "categorical_ordinal":
         thresholds = formula.get("thresholds", {})
         if not isinstance(thresholds, dict):
-            return f"{response_name} ~ Unknown"
+            return f"{target} ~ Unknown"
         category_name = selected_category or next(iter(thresholds.keys()), None)
         if category_name is None:
-            return f"{response_name} ~ Unknown"
+            return f"{target} ~ Unknown"
 
         threshold = thresholds[category_name]
         terms = [format_numeric_value(threshold.get("intercept", "0"))]
         terms.extend(expand_predictors_for_display(formula.get("predictors", {})))
-        return f"{response_name} ~ " + format_formula_terms(terms)
+        return f"{target} ~ " + format_formula_terms(terms)
 
-    return f"{response_name} ~ Unknown"
+    return f"{target} ~ Unknown"
 
 
 def render_formula_box(title: str, formula_text: str) -> None:
@@ -490,31 +582,33 @@ def render_section_header(title: str) -> None:
     st.divider()
 
 
-def render_predictor_selector(predictors: dict, response_name: str, category_name: str | None = None) -> None:
-    if not predictors:
-        st.info("No predictors defined.")
-        return
+def render_predictors_header() -> None:
+    st.markdown("<div style='margin-top: 0.75rem; margin-bottom: 0.35rem;'><h3 style='margin: 0;'>Predictors</h3></div>", unsafe_allow_html=True)
 
-    predictor_names = sorted(predictors.keys())
-    key_suffix = f"_{response_name}"
-    if category_name is not None:
-        key_suffix += f"_{category_name}"
-    predictor_label_to_name = {prettify_text(name): name for name in predictor_names}
-    selected_predictor_label = st.selectbox("Select a predictor", sorted(predictor_label_to_name.keys()), key=f"predictor_select{key_suffix}")
-    selected_predictor = predictor_label_to_name[selected_predictor_label]
-    render_predictor_block(selected_predictor, predictors[selected_predictor])
+
+def render_category_details_header() -> None:
+    st.markdown("<div style='margin-top: 0.75rem; margin-bottom: 0.35rem;'><h3 style='margin: 0;'>Category Details</h3></div>", unsafe_allow_html=True)
+
+
+def sort_ordinal_categories(category_names: list[str]) -> list[str]:
+    ordinal_order = ["precontemplation", "contemplation", "preparation", "action", "maintenance"]
+    ordered = [name for name in ordinal_order if name in category_names]
+    remaining = [name for name in category_names if name not in ordinal_order]
+    return ordered + sorted(remaining)
 
 
 def render_quantitative_formula(response_name: str, formula: dict, distributions: dict) -> None:
     left, right = st.columns([1, 1.4])
 
     with left:
-        render_section_header("General Info")
         render_field_value("Formula Type", "Quantitative")
         render_field_value("Intercept", formula.get("intercept", "Unknown"))
-        render_field_value("Transformation", formula.get("transformation", "none"))
-        render_section_header("Predictors")
-        render_predictor_selector(formula.get("predictors", {}), response_name)
+        render_predictors_header()
+        predictors = formula.get("predictors", {})
+        if predictors:
+            st.table(build_predictor_rows(predictors))
+        else:
+            st.info("No predictors defined.")
 
     with right:
         render_formula_box("Formula", build_formula_string(response_name, formula, distributions))
@@ -523,20 +617,20 @@ def render_quantitative_formula(response_name: str, formula: dict, distributions
 def render_nominal_formula(response_name: str, formula: dict, distributions: dict) -> None:
     category_models = formula.get("category_models", {})
     category_names = list(category_models.keys()) if isinstance(category_models, dict) else []
+    reference_category = formula.get("reference_category", "Unknown")
 
     left, right = st.columns([1, 1.4])
 
     with left:
-        render_section_header("General Info")
         render_field_value("Formula Type", "Categorical Nominal")
-        render_field_value("Reference Category", formula.get("reference_category", "Unknown"))
+        render_field_value("Reference Category", prettify_text(reference_category))
 
         if not category_names:
             st.info("No response categories defined.")
             return
 
-        render_section_header("Category Details")
-        category_label_to_name = {name: name for name in category_names}
+        render_category_details_header()
+        category_label_to_name = {prettify_text(name): name for name in category_names}
         selected_category_label = st.selectbox(
             "Select a response category",
             sorted(category_label_to_name.keys()),
@@ -546,8 +640,12 @@ def render_nominal_formula(response_name: str, formula: dict, distributions: dic
         category_block = category_models[selected_category]
         render_field_value("Intercept", category_block.get("intercept", "Unknown"))
 
-        render_section_header("Predictors")
-        render_predictor_selector(category_block.get("predictors", {}), response_name, selected_category)
+        render_predictors_header()
+        predictors = category_block.get("predictors", {})
+        if predictors:
+            st.table(build_predictor_rows(predictors))
+        else:
+            st.info("No predictors defined.")
 
     with right:
         render_formula_box("Formula", build_formula_string(response_name, formula, distributions, selected_category))
@@ -560,26 +658,30 @@ def render_ordinal_formula(response_name: str, formula: dict, distributions: dic
     left, right = st.columns([1, 1.4])
 
     with left:
-        render_section_header("General Info")
         render_field_value("Formula Type", "Categorical Ordinal")
-        render_field_value("Reference Category", formula.get("reference_category", "Unknown"))
+        render_field_value("Reference Category", prettify_text(formula.get("reference_category", "Unknown")))
 
         if not category_names:
             st.info("No threshold categories defined.")
             return
 
-        render_section_header("Category Details")
-        category_label_to_name = {name: name for name in category_names}
+        render_category_details_header()
+        category_label_to_name = {prettify_text(name): name for name in category_names}
+        ordered_category_names = sort_ordinal_categories(category_names)
         selected_category_label = st.selectbox(
             "Select a response category",
-            sorted(category_label_to_name.keys()),
+            [prettify_text(name) for name in ordered_category_names],
             key=f"ordinal_category_select_{response_name}",
         )
         selected_category = category_label_to_name[selected_category_label]
-        render_field_value("Intercept", thresholds[selected_category].get("intercept", "Unknown"))
+        render_field_value("Threshold", thresholds[selected_category].get("intercept", "Unknown"))
 
-        render_section_header("Predictors")
-        render_predictor_selector(formula.get("predictors", {}), response_name)
+        render_predictors_header()
+        predictors = formula.get("predictors", {})
+        if predictors:
+            st.table(build_predictor_rows(predictors))
+        else:
+            st.info("No predictors defined.")
 
     with right:
         render_formula_box("Formula", build_formula_string(response_name, formula, distributions, selected_category))
@@ -779,7 +881,7 @@ def build_categorical_chart(parameters: dict, chart_title: str | None = None):
         alt.Chart(alt.Data(values=values))
         .mark_bar(color="#2E86DE")
         .encode(
-            x=alt.X("category:N", title="Category", sort=None, axis=alt.Axis(labelAngle=-45)),
+            x=alt.X("category:N", title="Category", sort=[prettify_text(category) for category in categories], axis=alt.Axis(labelAngle=-45)),
             y=alt.Y("probability:Q", title="Probability"),
             tooltip=[alt.Tooltip("category:N", title="Category"), alt.Tooltip("probability:Q", title="Probability")],
         )
@@ -799,8 +901,8 @@ def render_dag(dag_data: dict) -> None:
                 size=18,
                 color=color,
                 font={"color": "#FFFFFF"},
-            )
         )
+    )
 
     edges = []
     for edge_data in dag_data["edges"].values():
