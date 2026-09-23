@@ -258,7 +258,7 @@ def render_details(selected_name: str, data: dict) -> None:
         if field_name in item:
             left, right = st.columns([1, 3])
             left.write(prettify_text(field_name))
-            right.write(prettify_text(item[field_name]))
+            right.write(item[field_name])
 
 
 def render_variable_tab(variables_data) -> None:
@@ -279,7 +279,7 @@ def render_distribution_selector(distributions: dict) -> str:
 def render_category_probability_table(categories: list, probabilities: list) -> None:
     rows = []
     for category, probability in zip(categories, probabilities):
-        rows.append({"Category": prettify_text(category), "Probability": format_numeric_value(probability)})
+        rows.append({"Category": category, "Probability": format_numeric_value(probability)})
     st.table(rows)
 
 
@@ -290,7 +290,7 @@ def render_distribution_details(selected_name: str, distributions: dict) -> None
     left, right = st.columns([1, 1.4])
 
     with left:
-        st.write(f"Distribution: {prettify_text(item.get('distribution', 'Unknown'))}")
+        st.write(f"Distribution: {item.get('distribution', 'Unknown')}")
 
         parameters = {key: value for key, value in item.items() if key != "distribution"}
         if not parameters:
@@ -307,7 +307,7 @@ def render_distribution_details(selected_name: str, distributions: dict) -> None
 
                 left_col, right_col = st.columns([1, 3])
                 left_col.write(prettify_text(field_name))
-                right_col.write(prettify_text(field_value))
+                right_col.write(field_value)
 
     with right:
         with st.container(border=False):
@@ -323,7 +323,7 @@ def render_distribution_details(selected_name: str, distributions: dict) -> None
 def render_field_value(field_name: str, field_value) -> None:
     left_col, right_col = st.columns([1, 1.4])
     left_col.write(prettify_text(field_name))
-    right_col.write(prettify_text(field_value))
+    right_col.write(field_value)
 
 
 def render_section_title(title: str) -> None:
@@ -372,7 +372,7 @@ def render_predictor_block(predictor_name: str, predictor: dict) -> None:
             for category_name, category_data in other_categories.items():
                 rows.append(
                     {
-                        "Other Categories": prettify_text(category_name),
+                        "Other Categories": category_name,
                         "Coefficient": format_numeric_value(category_data.get("coefficient", "Unknown")),
                     }
                 )
@@ -537,7 +537,7 @@ def render_nominal_formula(response_name: str, formula: dict, distributions: dic
             return
 
         render_section_header("Category Details")
-        category_label_to_name = {prettify_text(name): name for name in category_names}
+        category_label_to_name = {name: name for name in category_names}
         selected_category_label = st.selectbox(
             "Select a response category",
             sorted(category_label_to_name.keys()),
@@ -570,7 +570,7 @@ def render_ordinal_formula(response_name: str, formula: dict, distributions: dic
             return
 
         render_section_header("Category Details")
-        category_label_to_name = {prettify_text(name): name for name in category_names}
+        category_label_to_name = {name: name for name in category_names}
         selected_category_label = st.selectbox(
             "Select a response category",
             sorted(category_label_to_name.keys()),
@@ -774,7 +774,7 @@ def build_categorical_chart(parameters: dict, chart_title: str | None = None):
         return None
 
     values = [
-        {"category": prettify_text(category), "probability": float(probability)}
+        {"category": category, "probability": float(probability)}
         for category, probability in zip(categories, probabilities)
     ]
     return (
@@ -817,7 +817,14 @@ def render_dag(dag_data: dict) -> None:
         width=1400,
         height=850,
         directed=True,
-        physics=True,
+        physics={
+            "barnesHut": {
+                "gravitationalConstant": -3000,  # Make this more negative to push nodes apart
+                "centralGravity": 0.3,
+                "springLength": 200,            # Increase to stretch the connections
+                "springConstant": 0.04
+            }
+        },
         hierarchical=False,
         nodeHighlightBehavior=True,
         node={"size": 28},
