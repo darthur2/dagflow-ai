@@ -6,7 +6,6 @@ STREAMLIT_PORT="${STREAMLIT_PORT:?STREAMLIT_PORT is required}"
 OPENCODE_LOG="/tmp/opencode-web.log"
 STREAMLIT_LOG="/tmp/dagflow-streamlit.log"
 NPM_BIN="${NPM_CONFIG_PREFIX:-/usr/local}/bin"
-WORKSPACE_DIR="${WORKSPACE_DIR:-/workspace/dagflow-ai}"
 OPENCODE_AUTH_DIR="$HOME/.local/share/opencode"
 OPENCODE_AUTH_FILE="$OPENCODE_AUTH_DIR/auth.json"
 
@@ -80,13 +79,6 @@ if ! ensure_opencode_available; then
 fi
 
 write_opencode_auth
-
-if [ ! -d "$WORKSPACE_DIR" ]; then
-  echo "workspace directory not found: $WORKSPACE_DIR" >&2
-  exit 1
-fi
-
-cd "$WORKSPACE_DIR"
 
 if ! is_listening "$OPENCODE_PORT"; then
   start_background_service "opencode serve" "$OPENCODE_LOG" opencode serve --hostname 127.0.0.1 --port "$OPENCODE_PORT"
