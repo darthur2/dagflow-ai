@@ -80,10 +80,10 @@ fi
 
 write_opencode_auth
 
-# if ! is_listening "$OPENCODE_PORT"; then
-#   start_background_service "opencode serve" "$OPENCODE_LOG" opencode serve --hostname 127.0.0.1 --port "$OPENCODE_PORT"
-# fi
+if ! is_listening "$OPENCODE_PORT"; then
+  start_background_service "opencode serve" "$OPENCODE_LOG" opencode serve --hostname 127.0.0.1 --port "$OPENCODE_PORT" --cors "https://${CODESPACE_NAME}-${STREAMLIT_PORT}.app.github.dev"
+fi
 
-# if ! is_listening "$STREAMLIT_PORT"; then
-#   start_background_service "streamlit run" "$STREAMLIT_LOG" streamlit run python/app.py --server.address 0.0.0.0 --server.port "$STREAMLIT_PORT"
-# fi
+if ! is_listening "$STREAMLIT_PORT"; then
+  start_background_service "streamlit run" "$STREAMLIT_LOG" streamlit run python/app.py --server.address 0.0.0.0 --server.port "$STREAMLIT_PORT"
+fi
