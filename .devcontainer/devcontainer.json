@@ -31,8 +31,8 @@
   "forwardPorts": [4096, 8501],
   "portsAttributes": {
     "4096": {
-      "label": "opencode web",
-      "onAutoForward": "openBrowser"
+      "label": "opencode serve",
+      "onAutoForward": "silent"
     },
     "8501": {
       "label": "streamlit app",

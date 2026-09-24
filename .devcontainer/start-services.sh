@@ -22,6 +22,22 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
 PY
 }
 
+wait_for_port() {
+  local port="$1"
+  local attempts="${2:-50}"
+  local delay="${3:-0.2}"
+  local i
+
+  for ((i = 0; i < attempts; i++)); do
+    if is_listening "$port"; then
+      return 0
+    fi
+    sleep "$delay"
+  done
+
+  return 1
+}
+
 ensure_opencode_available() {
   if command -v opencode >/dev/null 2>&1; then
     return 0
@@ -82,6 +98,11 @@ write_opencode_auth
 
 if ! is_listening "$OPENCODE_PORT"; then
   start_background_service "opencode serve" "$OPENCODE_LOG" opencode serve --hostname 127.0.0.1 --port "$OPENCODE_PORT" --cors "https://${CODESPACE_NAME}-${STREAMLIT_PORT}.app.github.dev"
+fi
+
+if ! wait_for_port "$OPENCODE_PORT"; then
+  echo "opencode did not start listening on port $OPENCODE_PORT" >&2
+  exit 1
 fi
 
 if ! is_listening "$STREAMLIT_PORT"; then
