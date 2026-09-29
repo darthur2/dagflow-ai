@@ -527,15 +527,11 @@ def format_formula_multiline(formula_text: str) -> str:
         return formula_text
 
     lines = [f"{left_side} ~ {terms[0]}"]
-    for index in range(1, len(terms), 2):
-        pair = terms[index:index + 2]
-        rendered_terms = []
-        for term in pair:
-            if term.startswith("- "):
-                rendered_terms.append(f"- {term[2:]}")
-            else:
-                rendered_terms.append(f"+ {term}")
-        lines.append("  " + " ".join(rendered_terms))
+    for term in terms[1:]:
+        if term.startswith("- "):
+            lines.append(f"  - {term[2:]}")
+        else:
+            lines.append(f"  + {term}")
     return "\n".join(lines)
 
 
@@ -982,11 +978,9 @@ def render_selected_section() -> None:
     left_panel, right_panel = st.columns([3, 4], gap="large")
 
     with left_panel:
-        st.subheader("Chat")
         st.iframe(chat_url, height=540)
 
     with right_panel:
-        st.subheader("Views")
         st.segmented_control(
             "Navigate sections",
             section_names,
@@ -1032,7 +1026,7 @@ def render_selected_section() -> None:
                 render_data_tab(data_df, variables_data, distributions_data)
 
 
-st.title("DagFlow")
+st.title("DagFlow-AI")
 opencode_port = int(os.environ.get("OPENCODE_PORT", "4096"))
 codespace_name = os.environ.get("CODESPACE_NAME")
 if codespace_name:

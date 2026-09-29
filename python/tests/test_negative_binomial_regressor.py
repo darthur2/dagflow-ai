@@ -71,3 +71,35 @@ def test_negative_binomial_regressor_truncated_calibration_not_implemented():
         assert "truncated calibration not yet implemented" in str(exc)
     else:
         raise AssertionError("Expected calibrate() to raise NotImplementedError")
+
+
+def test_negative_binomial_regressor_calibration_rejects_bad_fit():
+    rng = np.random.default_rng(7)
+    X = np.column_stack(
+        [
+            rng.integers(0, 2, size=300).astype(float),
+            rng.integers(0, 2, size=300).astype(float),
+            rng.uniform(10.0, 32.0, size=300),
+            rng.uniform(20.0, 90.0, size=300),
+        ]
+    )
+
+    regressor = NegativeBinomialRegressor(
+        shape=7.0,
+        mean=12.0,
+        min=0,
+        max=80,
+        truncated=False,
+        X=X,
+        beta_1=np.array([0.2, 0.4, 0.065, -0.01], dtype=float),
+    )
+
+    try:
+        regressor.calibrate()
+    except ValueError as exc:
+        message = str(exc)
+        assert "fitted moments are too far from targets" in message
+        assert "relative_mean_error" in message
+        assert "relative_variance_error" in message
+    else:
+        raise AssertionError("Expected calibration to fail for the pathological extreme_heat_days fit")

@@ -791,6 +791,7 @@ class NegativeBinomialRegressor(NegativeBinomial):
     def _calibrate_untruncated(self) -> "NegativeBinomialRegressor":
         target_mean = self.get_mean()
         target_variance = self.get_variance()
+        tolerance = 0.05
 
         if not np.isfinite(target_mean) or target_mean <= 0.0:
             raise ValueError(
@@ -844,8 +845,26 @@ class NegativeBinomialRegressor(NegativeBinomial):
             )
 
         beta_0, log_shape = result.x
+        shape = float(np.exp(log_shape))
+        mu = self._mu(float(beta_0))
+        mean_mu = float(mu.mean())
+        mean_mu2 = float((mu**2).mean())
+        total_var = mean_mu + (1.0 + 1.0 / shape) * mean_mu2 - mean_mu**2
+        mean_relative_error = abs(mean_mu - target_mean) / max(abs(target_mean), np.finfo(float).tiny)
+        variance_relative_error = abs(total_var - target_variance) / max(abs(target_variance), np.finfo(float).tiny)
+        if mean_relative_error > tolerance or variance_relative_error > tolerance:
+            raise ValueError(
+                "Unable to calibrate NegativeBinomialRegressor: fitted moments are too far from targets; "
+                f"target_mean={target_mean:.6g}, target_variance={target_variance:.6g}, "
+                f"mean_mu={mean_mu:.6g}, total_var={total_var:.6g}, "
+                f"relative_mean_error={mean_relative_error:.6g}, "
+                f"relative_variance_error={variance_relative_error:.6g}, "
+                f"beta_0={float(beta_0):.6g}, shape={shape:.6g}, "
+                f"X_shape={self.X.shape}, beta_1_shape={self.beta_1.shape}"
+            )
+
         return NegativeBinomialRegressor(
-            shape=float(np.exp(log_shape)),
+            shape=shape,
             mean=float(np.exp(beta_0)),
             min=self.min,
             max=self.max,
