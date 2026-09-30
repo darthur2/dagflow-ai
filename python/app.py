@@ -636,7 +636,15 @@ def render_nominal_formula(response_name: str, formula: dict, distributions: dic
         st.info("No response categories defined.")
         return
 
-    render_formula_box("Formula", build_formula_string(response_name, formula, distributions))
+    category_label_to_name = {prettify_text(name): name for name in category_names}
+    category_labels = sorted(category_label_to_name.keys())
+    state_key = f"nominal_category_select_{response_name}"
+    if state_key not in st.session_state and category_labels:
+        st.session_state[state_key] = category_labels[0]
+    selected_category_label = st.session_state.get(state_key, category_labels[0])
+    selected_category = category_label_to_name.get(selected_category_label, category_names[0])
+
+    render_formula_box("Formula", build_formula_string(response_name, formula, distributions, selected_category))
 
     left, right = st.columns([1, 1.4])
 
@@ -646,11 +654,6 @@ def render_nominal_formula(response_name: str, formula: dict, distributions: dic
 
         st.divider()
         render_category_details_header()
-        category_label_to_name = {prettify_text(name): name for name in category_names}
-        category_labels = sorted(category_label_to_name.keys())
-        state_key = f"nominal_category_select_{response_name}"
-        if state_key not in st.session_state and category_labels:
-            st.session_state[state_key] = category_labels[0]
         selected_category_label = st.selectbox(
             "Select a response category",
             category_labels,
@@ -668,6 +671,7 @@ def render_nominal_formula(response_name: str, formula: dict, distributions: dic
         else:
             st.info("No predictors defined.")
 
+
 def render_ordinal_formula(response_name: str, formula: dict, distributions: dict) -> None:
     thresholds = formula.get("thresholds", {})
     category_names = list(thresholds.keys()) if isinstance(thresholds, dict) else []
@@ -677,7 +681,16 @@ def render_ordinal_formula(response_name: str, formula: dict, distributions: dic
         st.info("No threshold categories defined.")
         return
 
-    render_formula_box("Formula", build_formula_string(response_name, formula, distributions))
+    category_label_to_name = {prettify_text(name): name for name in category_names}
+    ordered_category_names = sort_ordinal_categories(category_names)
+    ordered_category_labels = [prettify_text(name) for name in ordered_category_names]
+    state_key = f"ordinal_category_select_{response_name}"
+    if state_key not in st.session_state and ordered_category_labels:
+        st.session_state[state_key] = ordered_category_labels[0]
+    selected_category_label = st.session_state.get(state_key, ordered_category_labels[0])
+    selected_category = category_label_to_name.get(selected_category_label, ordered_category_names[0])
+
+    render_formula_box("Formula", build_formula_string(response_name, formula, distributions, selected_category))
 
     left, right = st.columns([1, 1.4])
 
@@ -687,12 +700,6 @@ def render_ordinal_formula(response_name: str, formula: dict, distributions: dic
 
         st.divider()
         render_category_details_header()
-        category_label_to_name = {prettify_text(name): name for name in category_names}
-        ordered_category_names = sort_ordinal_categories(category_names)
-        ordered_category_labels = [prettify_text(name) for name in ordered_category_names]
-        state_key = f"ordinal_category_select_{response_name}"
-        if state_key not in st.session_state and ordered_category_labels:
-            st.session_state[state_key] = ordered_category_labels[0]
         selected_category_label = st.selectbox(
             "Select a response category",
             ordered_category_labels,
@@ -708,6 +715,7 @@ def render_ordinal_formula(response_name: str, formula: dict, distributions: dic
             st.table(build_predictor_rows(predictors))
         else:
             st.info("No predictors defined.")
+
 
 def render_formula_block(response_name: str, formula: dict, distributions: dict) -> None:
     if not formula:
