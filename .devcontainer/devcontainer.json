@@ -32,13 +32,11 @@
   "portsAttributes": {
     "4096": {
       "label": "opencode serve",
-      "onAutoForward": "openBrowser",
-      "visibility": "public"
+      "onAutoForward": "openBrowser"
     },
     "8501": {
       "label": "streamlit app",
-      "onAutoForward": "openPreview",
-      "visibility": "public"
+      "onAutoForward": "openPreview"
     }
   }
 }

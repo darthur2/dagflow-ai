@@ -97,6 +97,7 @@ fi
 write_opencode_auth
 
 if ! is_listening "$OPENCODE_PORT"; then
+  pwd
   start_background_service "opencode serve" "$OPENCODE_LOG" opencode serve --hostname 127.0.0.1 --port "$OPENCODE_PORT" --cors "https://${CODESPACE_NAME}-${STREAMLIT_PORT}.app.github.dev"
 fi
 
