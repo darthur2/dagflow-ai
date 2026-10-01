@@ -95,48 +95,24 @@ def _predictor_names(predictors: dict[str, Any]) -> list[str]:
     return names
 
 
-def _predictor_transformations(predictors: dict[str, Any]) -> dict[str, str]:
+def resolve_predictor_transformations(predictors: dict[str, Any]) -> dict[str, str]:
+    """Resolve the declared transformation for each predictor.
+
+    A malformed predictor block raises rather than silently defaulting to "none",
+    so a typo in a formula surfaces instead of quietly producing unscaled data.
+    """
     transformations: dict[str, str] = {}
     for predictor_name, predictor in predictors.items():
-        if "coefficient" in predictor:
+        if not isinstance(predictor, dict):
+            raise ValueError(f"Unsupported predictor schema for predictor: {predictor_name}")
+
+        if "coefficient" in predictor or ("reference_category" in predictor and "other_categories" in predictor):
             transformations[predictor_name] = str(predictor.get("transformation", "none"))
             continue
 
-        if "reference_category" in predictor and "other_categories" in predictor:
-            transformations[predictor_name] = str(predictor.get("transformation", "none"))
-            continue
-
-        raise ValueError("Unsupported predictor schema")
+        raise ValueError(f"Unsupported predictor schema for predictor: {predictor_name}")
 
     return transformations
-
-
-def _flatten_predictor_coefficients_and_names(
-    predictors: dict[str, Any],
-) -> tuple[list[float], list[str], dict[str, str]]:
-    coefficients: list[float] = []
-    names: list[str] = []
-    transformations: dict[str, str] = {}
-
-    for predictor_name, predictor in predictors.items():
-        if "coefficient" in predictor:
-            coefficients.append(float(predictor["coefficient"]))
-            names.append(predictor_name)
-            transformations[predictor_name] = str(predictor.get("transformation", "none"))
-            continue
-
-        if "reference_category" in predictor and "other_categories" in predictor:
-            category_names = list(predictor["other_categories"].keys())
-            for category_name in category_names:
-                category_data = predictor["other_categories"][category_name]
-                coefficients.append(float(category_data["coefficient"]))
-                names.append(predictor_name)
-            transformations[predictor_name] = str(predictor.get("transformation", "none"))
-            continue
-
-        raise ValueError("Unsupported predictor schema")
-
-    return coefficients, names, transformations
 
 
 def _predictor_dimension(predictor: dict[str, Any]) -> int:
@@ -152,39 +128,136 @@ def _predictor_dimension(predictor: dict[str, Any]) -> int:
     raise ValueError("Unsupported predictor schema")
 
 
-def make_beta_1(formulas_data: dict, variable_name: str):
+def _align_coefficients_to_predictor_names(
+    coefficients: list[float],
+    coefficient_names: list[str],
+    target_names: list[str],
+    context: str,
+) -> list[float]:
+    """Reorder declared coefficients into design-matrix column order.
+
+    The design matrix is built by walking a node's DAG parents, while coefficients
+    are declared in formulas.json key order. Matching on predictor name rather
+    than on position keeps every coefficient attached to the variable it was
+    written for. Duplicates (one entry per non-reference category of a categorical
+    predictor) are consumed in declaration order.
+    """
+    if len(coefficients) != len(coefficient_names):
+        raise ValueError(
+            f"{context}: internal error, {len(coefficients)} coefficients declared for "
+            f"{len(coefficient_names)} predictor names"
+        )
+
+    available: dict[str, list[int]] = {}
+    for index, coefficient_name in enumerate(coefficient_names):
+        available.setdefault(coefficient_name, []).append(index)
+
+    aligned: list[float] = []
+    for target_name in target_names:
+        candidates = available.get(target_name)
+        if not candidates:
+            raise ValueError(
+                f"{context}: design matrix column '{target_name}' has no matching formula predictor; "
+                f"declared predictors were {coefficient_names}"
+            )
+        aligned.append(coefficients[candidates.pop(0)])
+
+    unused = sorted(name for name, indexes in available.items() if indexes)
+    if unused:
+        raise ValueError(
+            f"{context}: formula predictors {unused} are not columns of this node's design matrix, "
+            f"which was built from {target_names}"
+        )
+
+    return aligned
+
+
+def collect_formula_predictors(formulas_data: dict, variable_name: str) -> dict[str, Any]:
+    """Return the predictor mapping that describes a variable's design matrix.
+
+    For categorical_nominal formulas the predictors live inside each category
+    model rather than at the top level. Every model must declare the same
+    predictors, so the first one is representative.
+    """
+    formula = formulas_data.get(variable_name)
+    if not isinstance(formula, dict):
+        return {}
+
+    if formula.get("type") == "categorical_nominal":
+        category_models = formula.get("category_models")
+        if isinstance(category_models, dict):
+            for category_block in category_models.values():
+                if isinstance(category_block, dict):
+                    predictors = category_block.get("predictors")
+                    if isinstance(predictors, dict):
+                        return predictors
+        return {}
+
+    predictors = formula.get("predictors")
+    return predictors if isinstance(predictors, dict) else {}
+
+
+def make_beta_1(formulas_data: dict, variable_name: str, predictor_names: list[str]) -> np.ndarray:
+    """Build beta_1 with one coefficient per design-matrix column.
+
+    `predictor_names` is the per-column provenance returned by the design-matrix
+    builder, so coefficients are attached to columns by predictor name instead of
+    by declaration position.
+    """
     if variable_name not in formulas_data:
         raise ValueError(f"Unknown variable: {variable_name}")
 
     formula = formulas_data[variable_name]
+    formula_type = formula.get("type")
+    context = f"variable '{variable_name}'"
 
-    if formula.get("type") == "quantitative":
-        return np.asarray(_predictor_coefficients(formula["predictors"]), dtype=float)
+    if formula_type in {"quantitative", "categorical_ordinal"}:
+        predictors = formula.get("predictors")
+        if not isinstance(predictors, dict):
+            raise ValueError(f"Unsupported formula schema for {context}")
+        aligned = _align_coefficients_to_predictor_names(
+            _predictor_coefficients(predictors),
+            _predictor_names(predictors),
+            list(predictor_names),
+            context,
+        )
+        return np.asarray(aligned, dtype=float)
 
-    if formula.get("type") == "categorical_nominal":
+    if formula_type == "categorical_nominal":
         category_models = formula.get("category_models", {})
         if not isinstance(category_models, dict):
-            raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
-        category_vectors = []
-        for category_block in category_models.values():
-            if not isinstance(category_block, dict):
-                raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
-            predictors = category_block.get("predictors", {})
-            if not isinstance(predictors, dict):
-                raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
-            row_count = sum(_predictor_dimension(predictor) for predictor in predictors.values())
-            category_vectors.append(np.zeros(row_count, dtype=float))
+            raise ValueError(f"Unsupported formula schema for {context}")
 
-        if not category_vectors:
+        rows: list[list[float]] = []
+        for category_name, category_block in category_models.items():
+            if not isinstance(category_block, dict):
+                raise ValueError(f"Unsupported formula schema for {context}")
+            predictors = category_block.get("predictors")
+            if not isinstance(predictors, dict):
+                raise ValueError(f"Unsupported formula schema for {context}")
+
+            declared_dimensions = sum(_predictor_dimension(predictor) for predictor in predictors.values())
+            if declared_dimensions != len(predictor_names):
+                raise ValueError(
+                    f"{context} category '{category_name}': predictors declare {declared_dimensions} "
+                    f"columns but the design matrix has {len(predictor_names)}"
+                )
+
+            rows.append(
+                _align_coefficients_to_predictor_names(
+                    _predictor_coefficients(predictors),
+                    _predictor_names(predictors),
+                    list(predictor_names),
+                    f"{context} category '{category_name}'",
+                )
+            )
+
+        if not rows:
             return np.asarray([], dtype=float)
 
-        return np.column_stack(category_vectors)
+        return np.column_stack(rows)
 
-    if formula.get("type") == "categorical_ordinal":
-        coefficients, _, _ = _flatten_predictor_coefficients_and_names(formula.get("predictors", {}))
-        return np.asarray(coefficients, dtype=float)
-
-    raise ValueError(f"Unsupported formula schema for variable: {variable_name}")
+    raise ValueError(f"Unsupported formula schema for {context}")
 
 
 def get_beta_0(formulas_data: dict, variable_name: str):

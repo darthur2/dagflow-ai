@@ -274,6 +274,165 @@ def _dag_formula_predictor_consistency_report(dag_data: dict[str, Any], formulas
     )
 
 
+def _dag_node_parents_in_order(dag_data: dict[str, Any]) -> dict[str, list[str]]:
+    nodes = dag_data.get("nodes", {})
+    edges = dag_data.get("edges", {})
+
+    if not isinstance(nodes, dict) or not isinstance(edges, dict):
+        return {}
+
+    parents: dict[str, list[str]] = {node_name: [] for node_name in nodes.keys()}
+
+    for edge_data in edges.values():
+        if not isinstance(edge_data, dict):
+            continue
+        parent = edge_data.get("parent")
+        child = edge_data.get("child")
+        if parent in parents and child in parents and parent not in parents[child]:
+            parents[child].append(parent)
+
+    return parents
+
+
+def _formula_predictor_orders(formula_item: dict[str, Any]) -> list[list[str]]:
+    if formula_item.get("type") == "categorical_nominal":
+        category_models = formula_item.get("category_models")
+        if not isinstance(category_models, dict):
+            return []
+        return [
+            list(category_block["predictors"].keys())
+            for category_block in category_models.values()
+            if isinstance(category_block, dict) and isinstance(category_block.get("predictors"), dict)
+        ]
+
+    predictors = formula_item.get("predictors")
+    if isinstance(predictors, dict):
+        return [list(predictors.keys())]
+
+    return []
+
+
+def _formula_predictor_order_report(formulas_data: dict[str, Any], dag_data: dict[str, Any]) -> ValidationReport:
+    """Require formula predictors in the same order as the DAG edges for that node.
+
+    The design matrix is built by walking a node's parents in edge declaration
+    order, so a differently ordered predictors mapping silently attaches each
+    coefficient to the wrong parent.
+    """
+    if not isinstance(formulas_data, dict) or not isinstance(dag_data, dict):
+        return ValidationReport(ok=True, errors=[])
+
+    parents_in_order = _dag_node_parents_in_order(dag_data)
+    mismatches: dict[str, Any] = {}
+
+    for node_name, parent_names in parents_in_order.items():
+        if not parent_names:
+            continue
+        formula_item = formulas_data.get(node_name)
+        if not isinstance(formula_item, dict):
+            continue
+        for declared_order in _formula_predictor_orders(formula_item):
+            if declared_order != parent_names:
+                mismatches[node_name] = {
+                    "dag_edge_order": parent_names,
+                    "formula_predictor_order": declared_order,
+                }
+                break
+
+    if not mismatches:
+        return ValidationReport(ok=True, errors=[])
+
+    return ValidationReport(
+        ok=False,
+        errors=[
+            ValidationError(
+                code="inconsistent_formula_predictor_order",
+                message="Formula predictors must be declared in the same order as the DAG edges for that node",
+                path="",
+                details={"mismatches": mismatches},
+            )
+        ],
+    )
+
+
+def _categorical_reference_alignment_report(formulas_data: dict[str, Any], distributions_data: dict[str, Any]) -> ValidationReport:
+    """Require each categorical reference category to be the first declared category.
+
+    One-hot encoding drops categories[0] unconditionally, so a formula anchored on
+    any other category silently shifts that predictor's coefficients onto the wrong
+    levels. Unlike ordering, this cannot be repaired by reordering.
+    """
+    if not isinstance(formulas_data, dict) or not isinstance(distributions_data, dict):
+        return ValidationReport(ok=True, errors=[])
+
+    problems: dict[str, Any] = {}
+
+    def check_predictors(predictors: Any, path_prefix: str) -> None:
+        if not isinstance(predictors, dict):
+            return
+        for predictor_name, predictor_item in predictors.items():
+            if not isinstance(predictor_item, dict) or "reference_category" not in predictor_item:
+                continue
+            distribution_item = distributions_data.get(predictor_name)
+            categories = distribution_item.get("categories") if isinstance(distribution_item, dict) else None
+            if not isinstance(categories, list) or len(categories) < 2:
+                continue
+            reference_category = predictor_item.get("reference_category")
+            other_categories = list((predictor_item.get("other_categories") or {}).keys())
+            if reference_category != categories[0] or other_categories != categories[1:]:
+                problems[f"{path_prefix}.{predictor_name}"] = {
+                    "reference_category": reference_category,
+                    "other_categories": other_categories,
+                    "expected_reference_category": categories[0],
+                    "expected_other_categories": categories[1:],
+                }
+
+    for formula_name, formula_item in formulas_data.items():
+        if not isinstance(formula_item, dict):
+            continue
+
+        if formula_item.get("type") == "categorical_nominal":
+            distribution_item = distributions_data.get(formula_name)
+            categories = distribution_item.get("categories") if isinstance(distribution_item, dict) else None
+            category_models = formula_item.get("category_models")
+            if isinstance(categories, list) and len(categories) >= 2 and isinstance(category_models, dict):
+                reference_category = formula_item.get("reference_category")
+                category_names = list(category_models.keys())
+                if reference_category != categories[0] or category_names != categories[1:]:
+                    problems[formula_name] = {
+                        "kind": "response",
+                        "reference_category": reference_category,
+                        "category_models": category_names,
+                        "expected_reference_category": categories[0],
+                        "expected_category_models": categories[1:],
+                    }
+            if isinstance(category_models, dict):
+                for category_name, category_block in category_models.items():
+                    if isinstance(category_block, dict):
+                        check_predictors(category_block.get("predictors"), f"{formula_name}.category_models.{category_name}")
+            continue
+
+        check_predictors(formula_item.get("predictors"), formula_name)
+
+    if not problems:
+        return ValidationReport(ok=True, errors=[])
+
+    return ValidationReport(
+        ok=False,
+        errors=[
+            ValidationError(
+                code="inconsistent_categorical_reference_alignment",
+                message=(
+                    "Categorical reference categories must be the first category in distributions.json, "
+                    "with remaining categories in declared order"
+                ),
+                path="",
+                details={"mismatches": problems},
+            )
+        ],
+    )
+
+
 def _variables_distribution_consistency_report(variables_data: dict[str, Any], distributions_data: dict[str, Any]) -> ValidationReport:
     if not isinstance(variables_data, dict) or not isinstance(distributions_data, dict):
         return ValidationReport(ok=True, errors=[])
@@ -1541,6 +1700,38 @@ def validate_dag_and_formulas_predictor_consistency(
     return _dag_formula_predictor_consistency_report(dag_data, formulas_data)
 
 
+def validate_formula_predictor_order_consistency(
+    formulas_data: dict[str, Any] | None,
+    dag_data: dict[str, Any] | None,
+) -> ValidationReport:
+    if formulas_data is None or dag_data is None:
+        return ValidationReport(ok=True, errors=[])
+
+    dag_report = validate_dag_file(dag_data)
+    formulas_report = validate_formulas_file(formulas_data)
+    errors = [*formulas_report.errors, *dag_report.errors]
+    if errors:
+        return ValidationReport(ok=False, errors=errors)
+
+    return _formula_predictor_order_report(formulas_data, dag_data)
+
+
+def validate_categorical_reference_alignment(
+    formulas_data: dict[str, Any] | None,
+    distributions_data: dict[str, Any] | None,
+) -> ValidationReport:
+    if formulas_data is None or distributions_data is None:
+        return ValidationReport(ok=True, errors=[])
+
+    formulas_report = validate_formulas_file(formulas_data)
+    distributions_report = validate_distributions_file(distributions_data)
+    errors = [*formulas_report.errors, *distributions_report.errors]
+    if errors:
+        return ValidationReport(ok=False, errors=errors)
+
+    return _categorical_reference_alignment_report(formulas_data, distributions_data)
+
+
 def validate_variables_and_distributions_consistency(
     variables_data: dict[str, Any] | None,
     distributions_data: dict[str, Any] | None,
@@ -1652,6 +1843,7 @@ def validate_all_available_files(
     if formulas_data is not None and dag_data is not None:
         errors.extend(validate_formulas_and_dag_consistency(formulas_data, dag_data).errors)
         errors.extend(validate_dag_and_formulas_predictor_consistency(dag_data, formulas_data).errors)
+        errors.extend(validate_formula_predictor_order_consistency(formulas_data, dag_data).errors)
     if dag_data is not None and distributions_data is not None:
         errors.extend(validate_dag_and_distributions_consistency(dag_data, distributions_data).errors)
     if variables_data is not None and distributions_data is not None:
@@ -1660,6 +1852,7 @@ def validate_all_available_files(
         errors.extend(validate_variables_and_formulas_consistency(variables_data, formulas_data).errors)
     if formulas_data is not None and distributions_data is not None:
         errors.extend(validate_formulas_and_distributions_consistency(formulas_data, distributions_data).errors)
+        errors.extend(validate_categorical_reference_alignment(formulas_data, distributions_data).errors)
 
     if errors:
         return ValidationReport(ok=False, errors=errors)

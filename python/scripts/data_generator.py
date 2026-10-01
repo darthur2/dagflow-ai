@@ -25,6 +25,7 @@ from regressors import (
     PoissonRegressor,
 )
 from utils import (
+    collect_formula_predictors,
     get_beta_0,
     get_distribution_categories,
     get_dag_order,
@@ -32,6 +33,7 @@ from utils import (
     load_json,
     make_beta_1,
     make_distribution,
+    resolve_predictor_transformations,
 )
 
 
@@ -43,14 +45,44 @@ def _one_hot(values: np.ndarray, categories: list[str]) -> np.ndarray:
     return np.column_stack([(values == category).astype(float) for category in categories])
 
 
+def _validate_categorical_reference(parent_name: str, categories: list[str], predictor_block: dict) -> None:
+    """Guard a categorical predictor's reference category against the one-hot encoding.
+
+    The design matrix drops categories[0] unconditionally, so a formula declaring a
+    different reference category would silently shift every coefficient of that
+    predictor onto the wrong level. This cannot be repaired by reordering.
+    """
+    if "reference_category" not in predictor_block:
+        return
+
+    reference_category = predictor_block.get("reference_category")
+    other_categories = list((predictor_block.get("other_categories") or {}).keys())
+
+    if reference_category != categories[0]:
+        raise ValueError(
+            f"Parent '{parent_name}' declares reference_category '{reference_category}' but its "
+            f"distribution lists '{categories[0]}' first; the design matrix always drops the first "
+            "category, so the reference category must match it"
+        )
+
+    if other_categories != categories[1:]:
+        raise ValueError(
+            f"Parent '{parent_name}' declares other_categories {other_categories} but its "
+            f"distribution lists {categories[1:]} after the reference category; the order must match "
+            "so coefficients line up with the one-hot columns"
+        )
+
+
 def _build_parent_matrix(
     parent_names: list[str],
     samples: dict[str, np.ndarray],
     distributions_data: dict[str, dict],
+    formula_predictors: dict[str, dict],
 ) -> tuple[np.ndarray, list[str], dict[str, str]]:
     columns: list[np.ndarray] = []
     predictor_names: list[str] = []
     predictor_transformations: dict[str, str] = {}
+    declared_transformations = resolve_predictor_transformations(formula_predictors)
 
     for parent_name in parent_names:
         if parent_name not in distributions_data:
@@ -62,17 +94,23 @@ def _build_parent_matrix(
             raise ValueError(f"Unsupported distribution for parent: {parent_name}")
 
         parent_values = np.asarray(samples[parent_name])
+        declared_predictor = formula_predictors.get(parent_name)
+        if not isinstance(declared_predictor, dict):
+            declared_predictor = {}
+        transformation = declared_transformations.get(parent_name, "none")
+
         if distribution_name in {"Categorical Nominal", "Categorical Ordinal"}:
             categories = get_distribution_categories(distributions_data, parent_name)
+            _validate_categorical_reference(parent_name, categories, declared_predictor)
             encoded = _one_hot(parent_values, categories)[:, 1:]
             columns.append(encoded)
             predictor_names.extend([parent_name] * encoded.shape[1])
-            predictor_transformations[parent_name] = "none"
+            predictor_transformations[parent_name] = transformation
             continue
 
         columns.append(parent_values.reshape(-1, 1).astype(float))
         predictor_names.append(parent_name)
-        predictor_transformations.setdefault(parent_name, "none")
+        predictor_transformations[parent_name] = transformation
 
     if not columns:
         return np.empty((len(next(iter(samples.values()))), 0), dtype=float), predictor_names, predictor_transformations
@@ -189,12 +227,17 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
         if formula is None:
             raise ValueError(f"Missing formula for endogenous variable: {variable_name}")
 
-        X, predictor_names, predictor_transformations = _build_parent_matrix(parent_names, samples, distributions_data)
+        X, predictor_names, predictor_transformations = _build_parent_matrix(
+            parent_names,
+            samples,
+            distributions_data,
+            collect_formula_predictors(formulas_data, variable_name),
+        )
         distribution_name = _distribution_name(distribution)
         regressor_cls = _regressor_for_distribution_name(distribution_name)
 
         beta_0 = get_beta_0(formulas_data, variable_name)
-        beta_1 = make_beta_1(formulas_data, variable_name)
+        beta_1 = make_beta_1(formulas_data, variable_name, predictor_names)
         categories = get_formula_categories(formulas_data, variable_name) if formula.get("type") in {"categorical_nominal", "categorical_ordinal"} else None
 
         try:
