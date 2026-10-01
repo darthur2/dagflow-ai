@@ -37,7 +37,7 @@
     },
     "8501": {
       "label": "streamlit app",
-      "onAutoForward": "openBrowser",
+      "onAutoForward": "openPreview",
       "visibility": "public"
     }
   }
