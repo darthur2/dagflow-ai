@@ -145,11 +145,21 @@ def build_univariate_chart(df, column_name: str, is_categorical: bool, is_discre
         )
 
     if is_discrete:
+        values = df[column_name].dropna().astype(float)
+        if values.empty:
+            return None
+
+        value_range = float(values.max() - values.min())
+        if value_range <= 0:
+            bin_step = 1
+        else:
+            bin_step = max(1, int(np.ceil(value_range / 25)))
+
         return (
             alt.Chart(df)
             .mark_bar(color="#2E86DE")
             .encode(
-                x=alt.X(f"{column_name}:Q", bin=alt.Bin(step=1), title=prettify_text(column_name)),
+                x=alt.X(f"{column_name}:Q", bin=alt.Bin(step=bin_step), title=prettify_text(column_name)),
                 y=alt.Y("count()", title="Count"),
                 tooltip=[alt.Tooltip("count()", title="Count")],
             )
