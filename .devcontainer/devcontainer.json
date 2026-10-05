@@ -1,35 +1,42 @@
 {
-  "name": "DagFlow",
-  "build": {
-    "dockerfile": "../Dockerfile",
-    "context": ".."
-  },
-  "remoteUser": "root",
-  "forwardPorts": [3838],
-  "postCreateCommand": "bash -lc 'test -d .opencode && cd .opencode && npm install'",
-  "postAttachCommand": "bash -lc 'exec /workspaces/dagflow-ai/bin/codespaces-opencode.sh'",
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "reditorsupport.r"
-      ]
+  "name": "DagFlow-AI",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
     }
   },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"]
+    }
+  },
+  "containerEnv": {
+    "OPENCODE_PORT": "4096",
+    "STREAMLIT_PORT": "8501"
+  },
   "secrets": {
-    "AGENT_MODEL": {
-      "description": "Model to use (e.g., gpt-5.4-mini, gemma-4-31b). Provider is inferred from the API key."
-    },
     "SSEC_LITELLM_API_KEY": {
       "description": "API key for ssec-litellm models."
-    },
-    "SSEC_LITELLM_BASE_URL": {
-      "description": "Override the default ssec-litellm base URL (optional)."
     },
     "OPENAI_API_KEY": {
       "description": "API key for OpenAI models (optional)."
     },
     "ANTHROPIC_API_KEY": {
       "description": "API key for Anthropic models (optional)."
+    }
+  },
+  "postCreateCommand": "python -m pip install -r requirements.txt && npm install -g opencode-ai",
+  "postStartCommand": "bash .devcontainer/start-services.sh",
+  "forwardPorts": [4096, 8501],
+  "portsAttributes": {
+    "4096": {
+      "label": "opencode serve",
+      "onAutoForward": "openBrowser"
+    },
+    "8501": {
+      "label": "streamlit app",
+      "onAutoForward": "openPreview"
     }
   }
 }
