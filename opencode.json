@@ -240,7 +240,10 @@
         "list": "deny",
         "question": "deny",
         "edit": "deny",
-        "bash": "allow",
+        "bash": {
+          "*": "deny",
+          "python *": "allow"
+        },
         "external_directory": "deny",
         "todowrite": "allow",
         "webfetch": "allow",
