@@ -28,11 +28,12 @@
   },
   "postCreateCommand": "python -m pip install -r requirements.txt && npm install -g opencode-ai",
   "postStartCommand": "bash .devcontainer/start-services.sh",
+  "postAttachCommand": "streamlit run python/app.py --server.address 0.0.0.0 --server.port 8501 --server.headless true --server.enableCORS false --server.enableXsrfProtection false",
   "forwardPorts": [4096, 8501],
   "portsAttributes": {
     "4096": {
       "label": "opencode serve",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "silent"
     },
     "8501": {
       "label": "streamlit app",

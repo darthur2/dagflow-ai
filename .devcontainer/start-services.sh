@@ -106,6 +106,6 @@ if ! wait_for_port "$OPENCODE_PORT"; then
   exit 1
 fi
 
-if ! is_listening "$STREAMLIT_PORT"; then
-  start_background_service "streamlit run" "$STREAMLIT_LOG" streamlit run python/app.py --server.address 0.0.0.0 --server.port "$STREAMLIT_PORT"
-fi
+# if ! is_listening "$STREAMLIT_PORT"; then
+#   start_background_service "streamlit run" "$STREAMLIT_LOG" streamlit run python/app.py --server.address 0.0.0.0 --server.port "$STREAMLIT_PORT"
+# fi
