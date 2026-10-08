@@ -9,9 +9,11 @@ nohup streamlit run python/app.py --server.address 0.0.0.0 --server.port "$STREA
   --server.headless true --server.enableCORS false --server.enableXsrfProtection false \
   >/tmp/dagflow-streamlit.log 2>&1 &
 
-# Wait (up to ~30s) for the port, then make ports public; failure is non-fatal.
-for _ in {1..150}; do
+# Wait (up to ~60s) for the port, then make ports public; failure is non-fatal.
+for i in {1..300}; do
   (exec 3<>"/dev/tcp/127.0.0.1/$STREAMLIT_PORT") 2>/dev/null && break
   sleep 0.2
+  echo "Waiting for Streamlit to start on port $STREAMLIT_PORT... ($i/300)"
 done
+
 gh codespace ports visibility "${STREAMLIT_PORT}:public" "${OPENCODE_PORT}:public" -c "${CODESPACE_NAME}" || true
