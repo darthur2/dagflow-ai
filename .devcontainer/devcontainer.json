@@ -4,7 +4,8 @@
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": "lts"
-    }
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
   },
   "customizations": {
     "vscode": {
@@ -28,11 +29,12 @@
   },
   "postCreateCommand": "python -m pip install -r requirements.txt && npm install -g opencode-ai",
   "postStartCommand": "bash .devcontainer/start-services.sh",
+  "postAttachCommand": "bash .devcontainer/start-streamlit.sh",
   "forwardPorts": [4096, 8501],
   "portsAttributes": {
     "4096": {
       "label": "opencode serve",
-      "onAutoForward": "openBrowser"
+      "onAutoForward": "silent"
     },
     "8501": {
       "label": "streamlit app",
