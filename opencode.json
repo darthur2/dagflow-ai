@@ -79,7 +79,8 @@
           "variables": "allow",
           "dag": "allow",
           "distributions": "allow",
-          "formulas": "allow"
+          "formulas": "allow",
+          "analysis": "allow"
         }
       }
     },
@@ -217,6 +218,36 @@
         "todowrite": "allow",
         "webfetch": "deny",
         "websearch": "deny",
+        "lsp": "deny",
+        "skill": "deny",
+        "doom_loop": "deny",
+        "task": "deny"
+      }
+    },
+    "analysis": {
+      "mode": "subagent",
+      "description": "Analyze a dataset found in synthdata/generated_data.csv",
+      "prompt": "{file:./prompts/analysis.md}",
+      "permission": {
+        "read": "deny",
+        "glob": {
+          "*": "deny",
+          "synthdata": "allow",
+          "synthdata/": "allow",
+          "synthdata/*": "allow"
+        },
+        "grep": "deny",
+        "list": "deny",
+        "question": "deny",
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "python *": "allow"
+        },
+        "external_directory": "deny",
+        "todowrite": "allow",
+        "webfetch": "allow",
+        "websearch": "allow",
         "lsp": "deny",
         "skill": "deny",
         "doom_loop": "deny",
