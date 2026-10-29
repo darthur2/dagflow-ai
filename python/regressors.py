@@ -27,6 +27,10 @@ def _apply_single_transformation(values: np.ndarray, transformation: str) -> np.
         if np.any(values <= 0):
             raise ValueError("log transformation requires positive values")
         return np.log(values)
+    if transformation == "log1p":
+        if np.any(values <= -1):
+            raise ValueError("log1p transformation requires values greater than -1")
+        return np.log1p(values)
     if transformation == "sqrt":
         if np.any(values < 0):
             raise ValueError("sqrt transformation requires non-negative values")
@@ -48,6 +52,36 @@ def _apply_single_transformation(values: np.ndarray, transformation: str) -> np.
     raise ValueError(f"Unsupported transformation: {transformation}")
 
 
+def _apply_inverse_response_transformation(values: np.ndarray, transformation: str) -> np.ndarray:
+    if transformation == "none":
+        transformed = values
+    elif transformation == "log":
+        transformed = np.exp(values)
+    elif transformation == "log1p":
+        transformed = np.expm1(values)
+    elif transformation == "exp":
+        if np.any(values <= 0):
+            raise ValueError("exp response transformation requires the linear predictor to be positive")
+        transformed = np.log(values)
+    elif transformation == "sqrt":
+        if np.any(values < 0):
+            raise ValueError("sqrt response transformation requires a non-negative linear predictor")
+        transformed = values**2
+    elif transformation == "inverse":
+        if np.any(values == 0):
+            raise ValueError("inverse response transformation requires a non-zero linear predictor")
+        transformed = 1.0 / values
+    elif transformation == "cubic":
+        transformed = np.cbrt(values)
+    else:
+        raise ValueError(f"Unsupported response transformation: {transformation}")
+
+    transformed = np.asarray(transformed, dtype=float)
+    if not np.all(np.isfinite(transformed)):
+        raise ValueError(f"response transformation '{transformation}' produced non-finite values")
+    return transformed
+
+
 def _transform_predictors(
     X: np.ndarray,
     predictor_names: list[str],
@@ -64,12 +98,13 @@ def _transform_predictors(
     transformed_names = []
     for idx, name in enumerate(predictor_names):
         current = X[:, idx]
-        if name in predictor_transformations:
-            transformation = predictor_transformations[name]
+        transformation = predictor_transformations.get(name, "none")
+        if transformation != "none":
             current = _apply_single_transformation(current, transformation)
-        else:
-            pass
-        transformed_columns.append(np.asarray(current, dtype=float))
+        current = np.asarray(current, dtype=float)
+        if not np.all(np.isfinite(current)):
+            raise ValueError(f"predictor '{name}' produced non-finite values during transformation '{transformation}'")
+        transformed_columns.append(current)
         transformed_names.append(name)
     return np.column_stack(transformed_columns), transformed_names
 
@@ -83,26 +118,120 @@ class NoneRegressor:
     predictor_transformations: dict[str, str] | None = None
     response_type: str = "quantitative"
     categories: list[str] | None = None
+    response_transformation: str = "none"
+
+    def __post_init__(self) -> None:
+        response_types = {"quantitative", "categorical_nominal", "categorical_ordinal"}
+        if self.response_type not in response_types:
+            raise ValueError(f"Unsupported response_type: {self.response_type}")
+
+        response_transformations = {"none", "log", "log1p", "exp", "sqrt", "inverse", "cubic"}
+        if self.response_transformation not in response_transformations:
+            raise ValueError(f"Unsupported response_transformation: {self.response_transformation}")
+        if self.response_type != "quantitative" and self.response_transformation != "none":
+            raise ValueError("response transformations are only supported for quantitative responses")
+
+        X = np.asarray(self.X, dtype=float)
+        if X.ndim != 2:
+            raise ValueError("X must be a 2D regression matrix")
+        predictor_names = self.predictor_names or [f"x{i}" for i in range(X.shape[1])]
+        if len(predictor_names) != X.shape[1]:
+            raise ValueError("predictor_names must have one name per column in X")
+        if X.shape[1] > 0:
+            X, predictor_names = _transform_predictors(X, predictor_names, self.predictor_transformations)
+
+        beta_1 = None if self.beta_1 is None else np.asarray(self.beta_1, dtype=float)
+        if beta_1 is not None:
+            if self.response_type == "categorical_nominal":
+                if beta_1.ndim == 1:
+                    beta_1 = beta_1.reshape(-1, 1)
+                if beta_1.ndim != 2:
+                    raise ValueError("beta_1 must be a 2D matrix for categorical_nominal responses")
+                if beta_1.shape[0] != X.shape[1]:
+                    raise ValueError("beta_1 must have one row per column in X")
+            else:
+                beta_1 = beta_1.reshape(-1)
+                if beta_1.shape[0] != X.shape[1]:
+                    raise ValueError("beta_1 must have one coefficient per column in X")
+
+        if self.response_type in {"categorical_nominal", "categorical_ordinal"}:
+            if self.categories is None:
+                raise ValueError("categories are required for categorical NoneRegressor")
+            categories = [str(category) for category in self.categories]
+            if len(categories) < 2:
+                raise ValueError("categories must contain at least two entries")
+            object.__setattr__(self, "categories", categories)
+
+        object.__setattr__(self, "X", X)
+        object.__setattr__(self, "predictor_names", predictor_names)
+        object.__setattr__(self, "beta_1", beta_1)
+
+    @staticmethod
+    def _repeat_values(values: np.ndarray, n: int) -> np.ndarray:
+        values = _as_1d_array(values)
+        if values.size == 0:
+            raise ValueError("cannot produce deterministic samples from an empty value vector")
+        return np.repeat(values, int(np.ceil(n / values.size)))[:n]
+
+    def _linear_predictor(self) -> np.ndarray:
+        if self.beta_1 is None:
+            return np.zeros((self.X.shape[0], 1), dtype=float)
+        values = np.asarray(self.X @ self.beta_1, dtype=float)
+        return values.reshape(-1, 1) if values.ndim == 1 else values
 
     def calibrate(self) -> "NoneRegressor":
         return self
 
     def sample(self, n: int) -> np.ndarray:
         n = int(n)
-        if self.response_type == "quantitative":
-            if self.X.ndim == 2 and self.X.shape[0] > 0:
-                row = self.X[0]
-                if self.beta_1 is not None and np.asarray(self.beta_1).size == row.size:
-                    return (np.asarray(self.beta_0 if self.beta_0 is not None else 0.0, dtype=float) + self.X @ np.asarray(self.beta_1, dtype=float).reshape(-1)).reshape(-1)[:n]
-            return np.full(n, float(self.beta_0 if self.beta_0 is not None else 0.0), dtype=float)
+        if n < 0:
+            raise ValueError("n must be non-negative")
+        if n == 0:
+            return np.asarray([], dtype=float)
 
-        if self.categories is None:
-            raise ValueError("categories are required for categorical NoneRegressor")
+        if self.response_type == "quantitative":
+            if self.beta_1 is None:
+                beta_0 = 0.0 if self.beta_0 is None else self.beta_0
+                if np.ndim(beta_0) != 0:
+                    raise ValueError("beta_0 must be a scalar when beta_1 is not provided")
+                values = np.full(self.X.shape[0], float(beta_0), dtype=float)
+            else:
+                beta_0 = 0.0 if self.beta_0 is None else float(self.beta_0)
+                values = beta_0 + self._linear_predictor().reshape(-1)
+            values = _apply_inverse_response_transformation(values, self.response_transformation)
+            return self._repeat_values(values, n)
+
+        if self.beta_1 is None:
+            raise ValueError("beta_1 is required for categorical NoneRegressor responses")
+
         if self.response_type == "categorical_nominal":
-            return np.asarray([self.categories[0]] * n, dtype=object)
-        if self.response_type == "categorical_ordinal":
-            return np.asarray([self.categories[0]] * n, dtype=object)
-        raise ValueError(f"Unsupported response_type: {self.response_type}")
+            scores = self._linear_predictor()
+            if scores.shape[1] != len(self.categories) - 1:
+                raise ValueError(
+                    "categorical_nominal beta_1 must have one column per non-reference category; "
+                    f"found {scores.shape[1]} columns for {len(self.categories)} categories"
+                )
+
+            intercepts = np.asarray([] if self.beta_0 is None else self.beta_0, dtype=float).reshape(-1)
+            if intercepts.size == 0:
+                intercepts = np.zeros(scores.shape[1], dtype=float)
+            if intercepts.size != scores.shape[1]:
+                raise ValueError("beta_0 must have one intercept per non-reference category")
+            scores = intercepts[None, :] + scores
+            scores = np.column_stack([np.zeros(scores.shape[0], dtype=float), scores])
+            indices = np.argmax(scores, axis=1)
+            return self._repeat_values(np.asarray([self.categories[index] for index in indices], dtype=object), n)
+
+        thresholds = np.asarray([] if self.beta_0 is None else self.beta_0, dtype=float).reshape(-1)
+        if thresholds.size == 0:
+            raise ValueError("categorical_ordinal responses require at least one threshold")
+        if np.any(np.diff(thresholds) <= 0):
+            raise ValueError("categorical_ordinal thresholds must be strictly increasing")
+        if len(self.categories) != thresholds.size + 1:
+            raise ValueError("categories must have one entry per threshold plus one")
+        eta = self._linear_predictor().reshape(-1)
+        indices = np.searchsorted(thresholds, eta, side="left")
+        return self._repeat_values(np.asarray([self.categories[index] for index in indices], dtype=object), n)
 
 
 @dataclass(frozen=True, kw_only=True)

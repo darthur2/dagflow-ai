@@ -82,7 +82,8 @@ Special Instructions:
 
 - Beta can have bounds other than [0, 1] in which case it can be scaled.
 - Select Bernoulli instead of a Binomial when n_trials is 1.
-- Select None when variable is labeled as deterministic in the DAG.
+- Select None when variable is labeled as deterministic in the DAG. A None distribution has no parameters because the deterministic formula defines the value exactly.
+- Never select None for a variable labeled as stochastic in the DAG. When None is used for a deterministic categorical variable, its categories are defined by that variable's formula rather than by the distribution.
 - Select parameters so that little probability mass/density will be outside the chosen bounds.
 
 Always update the distribution list by editing `synthdata/distributions.json`. DO NOT respond with or summarize the list to the synthesizer.
