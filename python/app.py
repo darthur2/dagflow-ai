@@ -110,11 +110,45 @@ def is_categorical_for_univariate(column_name: str, df, numeric_columns: set[str
     return False
 
 
-def get_domain_order(column_name: str, df, variables_data: dict | None = None, distributions_data: dict | None = None) -> list[str]:
+def get_formula_categories(formula: dict | None) -> list[str] | None:
+    if not isinstance(formula, dict):
+        return None
+
+    reference_category = formula.get("reference_category")
+    if not isinstance(reference_category, str):
+        return None
+
+    if formula.get("type") == "categorical_nominal":
+        category_models = formula.get("category_models")
+        if isinstance(category_models, dict) and category_models:
+            return [reference_category, *category_models.keys()]
+        return None
+
+    if formula.get("type") == "categorical_ordinal":
+        thresholds = formula.get("thresholds")
+        if isinstance(thresholds, dict) and thresholds:
+            return [reference_category, *thresholds.keys()]
+        return None
+
+    return None
+
+
+def get_domain_order(
+    column_name: str,
+    df,
+    variables_data: dict | None = None,
+    distributions_data: dict | None = None,
+    formulas_data: dict | None = None,
+) -> list[str]:
     if distributions_data and column_name in distributions_data:
         categories = distributions_data[column_name].get("categories")
         if isinstance(categories, list) and categories:
             return [str(category) for category in categories]
+
+    if formulas_data and column_name in formulas_data:
+        categories = get_formula_categories(formulas_data[column_name])
+        if categories:
+            return categories
 
     if variables_data and column_name in variables_data:
         metadata = variables_data[column_name]
@@ -182,7 +216,16 @@ def build_univariate_chart(df, column_name: str, is_categorical: bool, is_discre
     )
 
 
-def build_bivariate_chart(df, x_name: str, y_name: str, x_is_categorical: bool, y_is_categorical: bool, variables_data: dict | None = None, distributions_data: dict | None = None):
+def build_bivariate_chart(
+    df,
+    x_name: str,
+    y_name: str,
+    x_is_categorical: bool,
+    y_is_categorical: bool,
+    variables_data: dict | None = None,
+    distributions_data: dict | None = None,
+    formulas_data: dict | None = None,
+):
     if not x_is_categorical and not y_is_categorical:
         return (
             alt.Chart(df)
@@ -196,8 +239,8 @@ def build_bivariate_chart(df, x_name: str, y_name: str, x_is_categorical: bool, 
         )
 
     if x_is_categorical and y_is_categorical:
-        x_order = get_domain_order(x_name, df, variables_data, distributions_data)
-        y_order = get_domain_order(y_name, df, variables_data, distributions_data)
+        x_order = get_domain_order(x_name, df, variables_data, distributions_data, formulas_data)
+        y_order = get_domain_order(y_name, df, variables_data, distributions_data, formulas_data)
         x_display = f"{x_name}__display"
         y_display = f"{y_name}__display"
         chart_data = df.copy()
@@ -209,7 +252,7 @@ def build_bivariate_chart(df, x_name: str, y_name: str, x_is_categorical: bool, 
 
     categorical_name = x_name if x_is_categorical else y_name
     quantitative_name = y_name if x_is_categorical else x_name
-    category_order = get_domain_order(categorical_name, df, variables_data, distributions_data)
+    category_order = get_domain_order(categorical_name, df, variables_data, distributions_data, formulas_data)
     chart_data = df.copy()
     categorical_display = f"{categorical_name}__display"
     chart_data[categorical_display] = chart_data[categorical_name].astype(str).map(prettify_text)
@@ -241,7 +284,12 @@ def build_bivariate_categorical_chart(df, x_name: str, y_name: str, x_order: lis
     )
 
 
-def render_data_tab(df, variables_data: dict | None = None, distributions_data: dict | None = None) -> None:
+def render_data_tab(
+    df,
+    variables_data: dict | None = None,
+    distributions_data: dict | None = None,
+    formulas_data: dict | None = None,
+) -> None:
     if data_path.exists():
         st.download_button(
             "Download generated data",
@@ -266,7 +314,7 @@ def render_data_tab(df, variables_data: dict | None = None, distributions_data: 
         selected_column = column_label_to_name[selected_column_label]
         categorical = is_categorical_for_univariate(selected_column, df, numeric_columns, variables_data)
         discrete = is_discrete_numeric_column(selected_column, variables_data)
-        order = get_domain_order(selected_column, df, variables_data, distributions_data) if categorical else None
+        order = get_domain_order(selected_column, df, variables_data, distributions_data, formulas_data) if categorical else None
         st.altair_chart(build_univariate_chart(df, selected_column, categorical, discrete, order), use_container_width=True)
 
     with data_tabs[1]:
@@ -289,7 +337,7 @@ def render_data_tab(df, variables_data: dict | None = None, distributions_data: 
         y_categorical = is_categorical_for_bivariate(y_column, df, numeric_columns, variables_data)
 
         st.altair_chart(
-            build_bivariate_chart(df, x_column, y_column, x_categorical, y_categorical, variables_data, distributions_data),
+            build_bivariate_chart(df, x_column, y_column, x_categorical, y_categorical, variables_data, distributions_data, formulas_data),
             use_container_width=True,
         )
 
@@ -502,6 +550,8 @@ def format_formula_terms(terms: list[str]) -> str:
 
 def get_formula_target(response_name: str, distribution_name: str | None, formula: dict, selected_category: str | None = None) -> str:
     distribution_name = distribution_name or ""
+    if distribution_name == "None":
+        return format_term_name(response_name, formula.get("response_transformation"))
     if distribution_name in {"Normal"}:
         return f"E[{response_name}|x]"
     if distribution_name in {"Gamma", "Log Normal", "Poisson", "Negative Binomial"}:
@@ -620,13 +670,22 @@ def sort_ordinal_categories(category_names: list[str]) -> list[str]:
     return ordered + sorted(remaining)
 
 
+def formula_type_label(label: str, response_name: str, distributions: dict) -> str:
+    distribution_name = distributions.get(response_name, {}).get("distribution") if isinstance(distributions, dict) else None
+    return f"{label} (Deterministic)" if distribution_name == "None" else label
+
+
 def render_quantitative_formula(response_name: str, formula: dict, distributions: dict) -> None:
     render_formula_box("Formula", build_formula_string(response_name, formula, distributions))
 
     left, right = st.columns([1, 1.4])
 
     with left:
-        render_field_value("Formula Type", "Quantitative")
+        render_field_value("Formula Type", formula_type_label("Quantitative", response_name, distributions))
+        distribution_name = distributions.get(response_name, {}).get("distribution") if isinstance(distributions, dict) else None
+        response_transformation = formula.get("response_transformation", "none")
+        if distribution_name == "None" or response_transformation != "none":
+            render_field_value("Response Transformation", response_transformation)
         render_field_value("Intercept", formula.get("intercept", "Unknown"))
         st.divider()
         render_predictors_header()
@@ -659,7 +718,7 @@ def render_nominal_formula(response_name: str, formula: dict, distributions: dic
     left, right = st.columns([1, 1.4])
 
     with left:
-        render_field_value("Formula Type", "Categorical Nominal")
+        render_field_value("Formula Type", formula_type_label("Categorical Nominal", response_name, distributions))
         render_field_value("Reference Category", prettify_text(reference_category))
 
         st.divider()
@@ -705,7 +764,7 @@ def render_ordinal_formula(response_name: str, formula: dict, distributions: dic
     left, right = st.columns([1, 1.4])
 
     with left:
-        render_field_value("Formula Type", "Categorical Ordinal")
+        render_field_value("Formula Type", formula_type_label("Categorical Ordinal", response_name, distributions))
         render_field_value("Reference Category", prettify_text(formula.get("reference_category", "Unknown")))
 
         st.divider()
@@ -946,7 +1005,7 @@ def build_categorical_chart(parameters: dict, chart_title: str | None = None):
 def render_dag(dag_data: dict) -> None:
     nodes = []
     for node_id, node_data in dag_data["nodes"].items():
-        node_type = node_data.get("type", "stochastic")
+        node_type = str(node_data.get("type", "Stochastic")).lower()
         color = "#2E86DE" if node_type == "stochastic" else "#7F8C8D"
         nodes.append(
             Node(
@@ -1038,10 +1097,11 @@ def render_selected_section() -> None:
             data_df = load_csv(str(data_path), data_mtime)
             variables_data = load_json(variables_path) or {}
             distributions_data = load_json(distributions_path) or {}
+            formulas_data = load_json(formulas_path) or {}
             if data_df is None:
                 st.info("Generated data has not been created yet.")
             else:
-                render_data_tab(data_df, variables_data, distributions_data)
+                render_data_tab(data_df, variables_data, distributions_data, formulas_data)
 
 
 st.title("DagFlow-AI")

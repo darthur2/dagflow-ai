@@ -73,10 +73,36 @@ def _validate_categorical_reference(parent_name: str, categories: list[str], pre
         )
 
 
+def _parent_categories(
+    parent_name: str,
+    distributions_data: dict[str, dict],
+    formulas_data: dict[str, dict],
+) -> list[str] | None:
+    parent_metadata = distributions_data.get(parent_name)
+    if not isinstance(parent_metadata, dict):
+        raise ValueError(f"Missing distribution metadata for parent: {parent_name}")
+
+    distribution_name = parent_metadata.get("distribution")
+    if distribution_name in {"Categorical Nominal", "Categorical Ordinal"}:
+        return get_distribution_categories(distributions_data, parent_name)
+
+    if distribution_name == "None":
+        parent_formula = formulas_data.get(parent_name)
+        if isinstance(parent_formula, dict) and parent_formula.get("type") in {"categorical_nominal", "categorical_ordinal"}:
+            return get_formula_categories(formulas_data, parent_name)
+        raise ValueError(
+            f"Deterministic parent '{parent_name}' has a None distribution but no categorical formula; "
+            "its categories cannot be determined"
+        )
+
+    return None
+
+
 def _build_parent_matrix(
     parent_names: list[str],
     samples: dict[str, np.ndarray],
     distributions_data: dict[str, dict],
+    formulas_data: dict[str, dict],
     formula_predictors: dict[str, dict],
 ) -> tuple[np.ndarray, list[str], dict[str, str]]:
     columns: list[np.ndarray] = []
@@ -99,8 +125,8 @@ def _build_parent_matrix(
             declared_predictor = {}
         transformation = declared_transformations.get(parent_name, "none")
 
-        if distribution_name in {"Categorical Nominal", "Categorical Ordinal"}:
-            categories = get_distribution_categories(distributions_data, parent_name)
+        categories = _parent_categories(parent_name, distributions_data, formulas_data)
+        if categories is not None:
             _validate_categorical_reference(parent_name, categories, declared_predictor)
             encoded = _one_hot(parent_values, categories)[:, 1:]
             columns.append(encoded)
@@ -143,6 +169,7 @@ def _raise_generation_error(
     X: np.ndarray,
     predictor_names: list[str],
     predictor_transformations: dict[str, str],
+    response_transformation: str,
     beta_0,
     beta_1,
     stage: str,
@@ -153,6 +180,7 @@ def _raise_generation_error(
         f"distribution={distribution_name}; parents={parent_names}; "
         f"X_shape={X.shape}; predictor_names={predictor_names}; "
         f"predictor_transformations={predictor_transformations}; "
+        f"response_transformation={response_transformation}; "
         f"beta_0_type={type(beta_0).__name__}; beta_0_shape={getattr(beta_0, 'shape', None)}; "
         f"beta_1_type={type(beta_1).__name__}; beta_1_shape={getattr(beta_1, 'shape', None)}; "
         f"original_error={type(error).__name__}: {error}"
@@ -204,6 +232,10 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
 
     distributions = {name: make_distribution(distributions_data, name) for name in distributions_data}
     dag_order = get_dag_order(dag_data)
+    node_types = {
+        node_name: node_data.get("type", "Stochastic") if isinstance(node_data, dict) else "Stochastic"
+        for node_name, node_data in dag_data.get("nodes", {}).items()
+    }
 
     samples: dict[str, np.ndarray] = {}
     dataframe = pd.DataFrame(index=range(n))
@@ -216,7 +248,28 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
         if distribution is None:
             raise ValueError(f"Missing distribution for variable: {variable_name}")
 
+        distribution_name = _distribution_name(distribution)
+        node_type = node_types.get(variable_name, "Stochastic")
         parent_names = parents_by_child.get(variable_name, [])
+        is_deterministic = node_type == "Deterministic"
+
+        if is_deterministic:
+            if not parent_names:
+                raise ValueError(
+                    f"Deterministic variable '{variable_name}' has no parents; "
+                    "a deterministic node must be defined by a formula involving its parents"
+                )
+            if distribution_name != "None":
+                raise ValueError(
+                    f"Deterministic variable '{variable_name}' must use the None distribution, "
+                    f"found '{distribution_name}'"
+                )
+        elif distribution_name == "None":
+            raise ValueError(
+                f"Stochastic variable '{variable_name}' cannot use the None distribution; "
+                "label the node Deterministic in the DAG or choose a real distribution"
+            )
+
         if not parent_names:
             sampled = _sample_exogenous(variable_name, distribution, n)
             samples[variable_name] = sampled
@@ -227,13 +280,29 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
         if formula is None:
             raise ValueError(f"Missing formula for endogenous variable: {variable_name}")
 
+        response_transformation = formula.get("response_transformation", "none")
+        supported_response_transformations = {"none", "log", "log1p", "exp", "sqrt", "inverse", "cubic"}
+        if response_transformation not in supported_response_transformations:
+            raise ValueError(f"Unsupported response transformation for variable '{variable_name}': {response_transformation}")
+        if response_transformation != "none":
+            if not is_deterministic:
+                raise ValueError(
+                    f"Stochastic variable '{variable_name}' cannot use response transformation "
+                    f"'{response_transformation}'; response transformations are allowed only on deterministic nodes"
+                )
+            if formula.get("type") != "quantitative":
+                raise ValueError(
+                    f"Response transformation '{response_transformation}' requires a quantitative formula, "
+                    f"but '{variable_name}' uses '{formula.get('type')}'"
+                )
+
         X, predictor_names, predictor_transformations = _build_parent_matrix(
             parent_names,
             samples,
             distributions_data,
+            formulas_data,
             collect_formula_predictors(formulas_data, variable_name),
         )
-        distribution_name = _distribution_name(distribution)
         regressor_cls = _regressor_for_distribution_name(distribution_name)
 
         beta_0 = get_beta_0(formulas_data, variable_name)
@@ -350,7 +419,19 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                     categories=categories,
                 )
             elif distribution_name == "None":
-                regressor = regressor_cls(X=X, beta_0=beta_0, beta_1=beta_1, predictor_names=predictor_names, predictor_transformations=predictor_transformations, response_type="quantitative")
+                response_type = formula.get("type")
+                if response_type not in {"quantitative", "categorical_nominal", "categorical_ordinal"}:
+                    raise ValueError(f"Unsupported deterministic formula type for variable '{variable_name}': {response_type}")
+                regressor = regressor_cls(
+                    X=X,
+                    beta_0=beta_0,
+                    beta_1=beta_1,
+                    predictor_names=predictor_names,
+                    predictor_transformations=predictor_transformations,
+                    response_type=response_type,
+                    categories=categories,
+                    response_transformation=response_transformation,
+                )
             else:
                 raise ValueError(f"Unsupported distribution for variable: {variable_name}")
         except Exception as exc:
@@ -361,6 +442,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                 X=X,
                 predictor_names=predictor_names,
                 predictor_transformations=predictor_transformations,
+                response_transformation=response_transformation,
                 beta_0=beta_0,
                 beta_1=beta_1,
                 stage="regressor construction",
@@ -377,6 +459,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                 X=X,
                 predictor_names=predictor_names,
                 predictor_transformations=predictor_transformations,
+                response_transformation=response_transformation,
                 beta_0=beta_0,
                 beta_1=beta_1,
                 stage="sampling",

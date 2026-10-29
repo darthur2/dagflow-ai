@@ -151,6 +151,59 @@ def _formula_dag_consistency_report(formulas_data: dict[str, Any], dag_data: dic
     )
 
 
+def _response_transformation_context_report(formulas_data: dict[str, Any], dag_data: dict[str, Any]) -> ValidationReport:
+    """Reject non-identity response transformations outside deterministic quantitative nodes."""
+    if not isinstance(formulas_data, dict) or not isinstance(dag_data, dict):
+        return ValidationReport(ok=True, errors=[])
+
+    dag_nodes = dag_data.get("nodes")
+    if not isinstance(dag_nodes, dict):
+        return ValidationReport(ok=True, errors=[])
+
+    problems: dict[str, dict[str, Any]] = {}
+    for formula_name, formula_item in formulas_data.items():
+        if not isinstance(formula_item, dict):
+            continue
+
+        response_transformation = formula_item.get("response_transformation", "none")
+        if response_transformation == "none":
+            continue
+
+        formula_type = formula_item.get("type")
+        node_item = dag_nodes.get(formula_name)
+        node_type = node_item.get("type") if isinstance(node_item, dict) else None
+
+        if formula_type != "quantitative":
+            problems[formula_name] = {
+                "response_transformation": response_transformation,
+                "formula_type": formula_type,
+                "node_type": node_type,
+                "reason": "response transformations require a quantitative formula",
+            }
+        elif node_type is not None and node_type != "Deterministic":
+            problems[formula_name] = {
+                "response_transformation": response_transformation,
+                "formula_type": formula_type,
+                "node_type": node_type,
+                "reason": "response transformations require a Deterministic DAG node",
+            }
+
+    if not problems:
+        return ValidationReport(ok=True, errors=[])
+
+    return ValidationReport(
+        ok=False,
+        errors=[
+            ValidationError(
+                code="invalid_response_transformation_context",
+                message="Response transformations are allowed only on deterministic quantitative nodes",
+                path="",
+                details={"offending_formulas": problems},
+            )
+        ],
+    )
+
+
 def _dag_distribution_consistency_report(dag_data: dict[str, Any], distributions_data: dict[str, Any]) -> ValidationReport:
     if not isinstance(dag_data, dict) or not isinstance(distributions_data, dict):
         return ValidationReport(ok=True, errors=[])
@@ -159,14 +212,22 @@ def _dag_distribution_consistency_report(dag_data: dict[str, Any], distributions
     if not isinstance(dag_nodes, dict):
         return ValidationReport(ok=True, errors=[])
 
+    parents = _dag_node_parents(dag_data)
     deterministic_nodes = sorted(
         node_name
         for node_name, node_data in dag_nodes.items()
         if isinstance(node_data, dict) and node_data.get("type") == "Deterministic"
     )
+    stochastic_nodes = sorted(
+        node_name
+        for node_name, node_data in dag_nodes.items()
+        if isinstance(node_data, dict) and node_data.get("type") == "Stochastic"
+    )
 
     distributions_nodes = set(distributions_data.keys())
     deterministic_with_non_none: list[str] = []
+    stochastic_with_none: list[str] = []
+    deterministic_without_parents: list[str] = []
     missing_from_distributions: list[str] = []
     distributions_missing_from_dag: list[str] = []
 
@@ -178,9 +239,29 @@ def _dag_distribution_consistency_report(dag_data: dict[str, Any], distributions
         if not isinstance(distribution_item, dict) or distribution_item.get("distribution") != "None":
             deterministic_with_non_none.append(node_name)
 
+    for node_name in stochastic_nodes:
+        distribution_item = distributions_data.get(node_name)
+        if distribution_item is None:
+            if node_name not in missing_from_distributions:
+                missing_from_distributions.append(node_name)
+            continue
+        if isinstance(distribution_item, dict) and distribution_item.get("distribution") == "None":
+            stochastic_with_none.append(node_name)
+
+    for node_name in deterministic_nodes:
+        if not parents.get(node_name):
+            deterministic_without_parents.append(node_name)
+
+    missing_from_distributions = sorted(set(missing_from_distributions))
     distributions_missing_from_dag = sorted(distributions_nodes - set(dag_nodes.keys()))
 
-    if not deterministic_with_non_none and not missing_from_distributions and not distributions_missing_from_dag:
+    if (
+        not deterministic_with_non_none
+        and not stochastic_with_none
+        and not deterministic_without_parents
+        and not missing_from_distributions
+        and not distributions_missing_from_dag
+    ):
         return ValidationReport(ok=True, errors=[])
 
     return ValidationReport(
@@ -188,11 +269,14 @@ def _dag_distribution_consistency_report(dag_data: dict[str, Any], distributions
         errors=[
             ValidationError(
                 code="inconsistent_dag_distribution_sets",
-                message="Deterministic DAG nodes must use None distributions",
+                message="DAG node types and distributions are inconsistent",
                 path="",
                 details={
                     "deterministic_nodes": deterministic_nodes,
+                    "stochastic_nodes": stochastic_nodes,
                     "deterministic_nodes_with_non_none_distribution": deterministic_with_non_none,
+                    "stochastic_nodes_with_none_distribution": stochastic_with_none,
+                    "deterministic_nodes_without_parents": deterministic_without_parents,
                     "dag_nodes_missing_from_distributions": missing_from_distributions,
                     "distributions_missing_from_dag": distributions_missing_from_dag,
                 },
@@ -355,6 +439,28 @@ def _formula_predictor_order_report(formulas_data: dict[str, Any], dag_data: dic
     )
 
 
+def _formula_declared_categories(formula_item: Any) -> list[str] | None:
+    if not isinstance(formula_item, dict):
+        return None
+
+    formula_type = formula_item.get("type")
+    if formula_type == "categorical_nominal":
+        category_models = formula_item.get("category_models")
+        reference_category = formula_item.get("reference_category")
+        if isinstance(reference_category, str) and isinstance(category_models, dict) and category_models:
+            return [reference_category, *category_models.keys()]
+        return None
+
+    if formula_type == "categorical_ordinal":
+        thresholds = formula_item.get("thresholds")
+        reference_category = formula_item.get("reference_category")
+        if isinstance(reference_category, str) and isinstance(thresholds, dict) and thresholds:
+            return [reference_category, *thresholds.keys()]
+        return None
+
+    return None
+
+
 def _categorical_reference_alignment_report(formulas_data: dict[str, Any], distributions_data: dict[str, Any]) -> ValidationReport:
     """Require each categorical reference category to be the first declared category.
 
@@ -375,6 +481,8 @@ def _categorical_reference_alignment_report(formulas_data: dict[str, Any], distr
                 continue
             distribution_item = distributions_data.get(predictor_name)
             categories = distribution_item.get("categories") if isinstance(distribution_item, dict) else None
+            if not isinstance(categories, list) or len(categories) < 2:
+                categories = _formula_declared_categories(formulas_data.get(predictor_name))
             if not isinstance(categories, list) or len(categories) < 2:
                 continue
             reference_category = predictor_item.get("reference_category")
@@ -423,7 +531,7 @@ def _categorical_reference_alignment_report(formulas_data: dict[str, Any], distr
             ValidationError(
                 code="inconsistent_categorical_reference_alignment",
                 message=(
-                    "Categorical reference categories must be the first category in distributions.json, "
+                    "Categorical reference categories must be the first category declared for that variable, "
                     "with remaining categories in declared order"
                 ),
                 path="",
@@ -455,6 +563,9 @@ def _variables_distribution_consistency_report(variables_data: dict[str, Any], d
         variable_type = variable_item.get("data_type")
         variable_level = variable_item.get("classification") if variable_type == "Quantitative" else variable_item.get("measurement_level")
         distribution_name = distribution_item.get("distribution")
+
+        if distribution_name == "None":
+            continue
 
         if variable_type == "Quantitative" and variable_level == "Continuous" and distribution_name not in continuous_distributions:
             quantitative_continuous_mismatches[variable_name] = str(distribution_name)
@@ -617,7 +728,9 @@ def _formulas_distribution_consistency_report(formulas_data: dict[str, Any], dis
         formula_type = formula_item.get("type")
         distribution_name = distribution_item.get("distribution")
 
-        if formula_type == "quantitative" and distribution_name not in quantitative_distributions:
+        if distribution_name == "None":
+            pass
+        elif formula_type == "quantitative" and distribution_name not in quantitative_distributions:
             formula_distribution_type_mismatches[variable_name] = f"expected a quantitative distribution, found {distribution_name!r}"
         elif formula_type == "categorical_nominal" and distribution_name != "Categorical Nominal":
             formula_distribution_type_mismatches[variable_name] = f"expected 'Categorical Nominal', found {distribution_name!r}"
@@ -682,9 +795,15 @@ def _formulas_distribution_consistency_report(formulas_data: dict[str, Any], dis
 
         for predictor_name, predictor_item in predictor_blocks.items():
             predictor_distribution = distributions_data.get(predictor_name)
-            if not isinstance(predictor_distribution, dict) or predictor_distribution.get("distribution") != "Categorical Nominal":
+            if not isinstance(predictor_distribution, dict):
                 continue
-            categories = predictor_distribution.get("categories", [])
+            predictor_distribution_name = predictor_distribution.get("distribution")
+            if predictor_distribution_name in {"Categorical Nominal", "Categorical Ordinal"}:
+                categories = predictor_distribution.get("categories", [])
+            elif predictor_distribution_name == "None":
+                categories = _formula_declared_categories(formulas_data.get(predictor_name))
+            else:
+                continue
             if not isinstance(categories, list):
                 continue
             reference_category = predictor_item.get("reference_category")
@@ -720,65 +839,6 @@ def _formulas_distribution_consistency_report(formulas_data: dict[str, Any], dis
                     "formula_distribution_type_mismatches": formula_distribution_type_mismatches,
                     "categorical_response_category_mismatches": categorical_response_category_mismatches,
                     "categorical_predictor_category_mismatches": categorical_predictor_category_mismatches,
-                },
-            )
-        ],
-    )
-
-    distributions_nodes = set(distributions_data.keys())
-    deterministic_with_non_none: list[str] = []
-    missing_from_distributions: list[str] = []
-    distributions_missing_from_dag: list[str] = []
-
-    for node_name in deterministic_nodes:
-        distribution_item = distributions_data.get(node_name)
-        if distribution_item is None:
-            missing_from_distributions.append(node_name)
-            continue
-        if not isinstance(distribution_item, dict) or distribution_item.get("distribution") != "None":
-            deterministic_with_non_none.append(node_name)
-
-    distributions_missing_from_dag = sorted(distributions_nodes - set(dag_nodes.keys()))
-
-    if not deterministic_with_non_none and not missing_from_distributions and not distributions_missing_from_dag:
-        return ValidationReport(ok=True, errors=[])
-
-    return ValidationReport(
-        ok=False,
-        errors=[
-            ValidationError(
-                code="inconsistent_dag_distribution_sets",
-                message="Deterministic DAG nodes must use None distributions",
-                path="",
-                details={
-                    "deterministic_nodes": deterministic_nodes,
-                    "deterministic_nodes_with_non_none_distribution": deterministic_with_non_none,
-                    "dag_nodes_missing_from_distributions": missing_from_distributions,
-                    "distributions_missing_from_dag": distributions_missing_from_dag,
-                },
-            )
-        ],
-    )
-
-    return ValidationReport(
-        ok=False,
-        errors=[
-            ValidationError(
-                code="inconsistent_variable_sets",
-                message="Variable names differ across the present core files",
-                path="",
-                details={
-                    "present_files": {
-                        "variables": variables_names is not None,
-                        "dag": dag_names is not None,
-                        "distributions": distributions_names is not None,
-                    },
-                    "variables_only": variables_only,
-                    "dag_only": dag_only,
-                    "distributions_only": distributions_only,
-                    "missing_from_variables": missing_from_variables,
-                    "missing_from_dag": missing_from_dag,
-                    "missing_from_distributions": missing_from_distributions,
                 },
             )
         ],
@@ -1098,7 +1158,7 @@ class QuantitativePredictor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     coefficient: float
-    transformation: Literal["none", "exp", "log", "sqrt", "inverse", "square", "cubic", "quartic", "sin", "cos"] = "none"
+    transformation: Literal["none", "exp", "log", "log1p", "sqrt", "inverse", "square", "cubic", "quartic", "sin", "cos"] = "none"
 
 
 class CategoricalPredictorCategory(BaseModel):
@@ -1122,12 +1182,16 @@ class CategoricalPredictors(RootModel[dict[str, CategoricalPredictor]]):
     pass
 
 
+ResponseTransformation = Literal["none", "log", "log1p", "exp", "sqrt", "inverse", "cubic"]
+
+
 class QuantitativeFormula(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["quantitative"]
     intercept: float
     predictors: dict[str, QuantitativePredictor | CategoricalPredictor]
+    response_transformation: ResponseTransformation = "none"
 
 
 class NominalCategoryFormula(BaseModel):
@@ -1665,7 +1729,12 @@ def validate_formulas_and_dag_consistency(
     if errors:
         return ValidationReport(ok=False, errors=errors)
 
-    return _formula_dag_consistency_report(formulas_data, dag_data)
+    reports = [
+        _formula_dag_consistency_report(formulas_data, dag_data),
+        _response_transformation_context_report(formulas_data, dag_data),
+    ]
+    errors = [error for report in reports for error in report.errors]
+    return ValidationReport(ok=not errors, errors=errors)
 
 
 def validate_dag_and_distributions_consistency(

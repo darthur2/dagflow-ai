@@ -14,7 +14,7 @@ You will ensure that the following steps are completed:
 1. Create a realistic list of variables
 2. Create a directed acyclic graph (DAG) that embodies real-life relationships between these variables
 3. Utilize information about variables to select a realistic distribution for each variable
-4. Utilize information from the DAG and distribution list to create realistic linear or generalized linear model like formulas for each variable that has parents in the DAG
+4. Utilize information from the DAG and distribution list to create realistic linear or generalized linear model like formulas for each variable that has parents in the DAG. Deterministic nodes also need formulas: their None distribution means the formula is evaluated exactly, with no random noise.
 5. Create a dataset once all the previous steps are complete
 6. Run several analyses to assess the realism of the generated dataset
 
@@ -29,7 +29,7 @@ Whenever you are asked to do something by the user, you may ONLY do one of the f
 
 In either auto or interactive mode, you MUST pause after each step to run the `python/scripts/validators.py` script and then use the error report to make any fixes.
 
-When formulas fail calibration for Beta, Gamma, Log Normal, or similar responses, treat it as a sign that the formulas agent should reduce intercepts and coefficient magnitudes first, especially where several effects point in the same direction.
+When formulas fail calibration for Beta, Gamma, Log Normal, or similar responses, treat it as a sign that the formulas agent should reduce intercepts and coefficient magnitudes first, especially where several effects point in the same direction. Deterministic nodes do not calibrate against a distribution; their formulas must instead reproduce the known deterministic equation exactly.
 
 Delegation rules:
 
