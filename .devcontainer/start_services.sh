@@ -61,19 +61,32 @@ import sys
 from pathlib import Path
 
 auth_file = Path(sys.argv[1])
+
+payload = {}
+if auth_file.exists():
+    try:
+        existing = json.loads(auth_file.read_text(encoding="utf-8"))
+        if isinstance(existing, dict):
+            payload = existing
+    except (json.JSONDecodeError, OSError):
+        payload = {}
+
 providers = {
     "ssec-litellm": os.environ.get("SSEC_LITELLM_API_KEY"),
     "openai": os.environ.get("OPENAI_API_KEY"),
     "anthropic": os.environ.get("ANTHROPIC_API_KEY"),
 }
 
-payload = {
-    name: {"type": "api", "key": env_var}
-    for name, env_var in providers.items()
-    if env_var
-}
+for name, env_var in providers.items():
+    if not env_var:
+        continue
+    current = payload.get(name)
+    if isinstance(current, dict) and current.get("type") == "oauth":
+        continue
+    payload[name] = {"type": "api", "key": env_var}
 
 auth_file.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+auth_file.chmod(0o600)
 PY
 }
 
