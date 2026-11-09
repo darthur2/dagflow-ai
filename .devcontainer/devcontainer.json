@@ -28,8 +28,8 @@
     }
   },
   "postCreateCommand": "python -m pip install -r requirements.txt && npm install -g opencode-ai",
-  "postStartCommand": "bash .devcontainer/start-services.sh",
-  "postAttachCommand": "bash .devcontainer/start-streamlit.sh",
+  "postStartCommand": "bash .devcontainer/start_services.sh",
+  "postAttachCommand": "bash .devcontainer/start_streamlit.sh",
   "forwardPorts": [4096, 8501],
   "portsAttributes": {
     "4096": {
