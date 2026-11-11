@@ -10,7 +10,8 @@ Variables may either be quantitative or categorical, each with their own schema.
     "justification": "str, reason for including the variable",
     "measurement_level": "str, Interval or Ratio",
     "classification": "str, Discrete or Continuous",
-    "skew": "str, Left, Right, or None"
+    "skew": "str, Left, Right, or None",
+    "decimal_places": "int, required for Continuous variables only, 0-6 digits after the decimal point"
   },
   "categorical_variable_name": {
     "data_type": "str, Categorical",
@@ -20,5 +21,7 @@ Variables may either be quantitative or categorical, each with their own schema.
   }
 }
 ```
+
+For every quantitative variable classified as `Continuous`, include `decimal_places`: an integer from 0 to 6 giving the number of digits after the decimal point that reflects how that variable is realistically reported (for example, GPA might use 2, income 0, temperature 1, and reaction time 3). Omit `decimal_places` for `Discrete` quantitative variables and for categorical variables; those values are integers or labels.
 
 Always update the variable list by editing `synthdata/variables.json`. DO NOT respond with or summarize the list to the synthesizer.

@@ -344,7 +344,7 @@ def render_data_tab(
 def render_details(selected_name: str, data: dict) -> None:
     item = data[selected_name]
 
-    field_order = ["name", "description", "justification", "effect_type", "measurement_level", "classification", "skew"]
+    field_order = ["data_type", "description", "justification", "measurement_level", "classification", "skew", "decimal_places"]
 
     for field_name in field_order:
         if field_name in item:

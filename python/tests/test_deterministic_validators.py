@@ -14,6 +14,18 @@ def _quantitative_variable() -> dict:
         "justification": "justification",
         "measurement_level": "Ratio",
         "classification": "Continuous",
+        "decimal_places": 6,
+        "skew": "None",
+    }
+
+
+def _discrete_variable() -> dict:
+    return {
+        "data_type": "Quantitative",
+        "description": "description",
+        "justification": "justification",
+        "measurement_level": "Ratio",
+        "classification": "Discrete",
         "skew": "None",
     }
 
@@ -300,3 +312,49 @@ def test_unsupported_response_transformation_fails_validation():
 
     assert not report.ok
     assert any(error.code == "literal_error" for error in report.errors)
+
+
+def test_continuous_variable_requires_decimal_places():
+    variable = _quantitative_variable()
+    del variable["decimal_places"]
+
+    report = validators.validate_variables_file({"x": variable})
+
+    assert not report.ok
+    assert any("decimal_places is required" in error.message for error in report.errors)
+
+
+def test_discrete_variable_cannot_declare_decimal_places():
+    variable = _discrete_variable()
+    variable["decimal_places"] = 2
+
+    report = validators.validate_variables_file({"x": variable})
+
+    assert not report.ok
+    assert any("decimal_places is only allowed" in error.message for error in report.errors)
+
+
+def test_discrete_variable_without_decimal_places_passes():
+    report = validators.validate_variables_file({"x": _discrete_variable()})
+
+    assert report.ok, report.errors
+
+
+def test_decimal_places_must_be_in_range():
+    variable = _quantitative_variable()
+    variable["decimal_places"] = 7
+
+    report = validators.validate_variables_file({"x": variable})
+
+    assert not report.ok
+    assert any(error.path == "x.decimal_places" for error in report.errors)
+
+
+def test_decimal_places_must_be_an_integer():
+    variable = _quantitative_variable()
+    variable["decimal_places"] = "2"
+
+    report = validators.validate_variables_file({"x": variable})
+
+    assert not report.ok
+    assert any(error.path == "x.decimal_places" for error in report.errors)

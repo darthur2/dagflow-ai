@@ -4,11 +4,13 @@ from math import isfinite
 from typing import Any, Literal
 import sys
 
-from pydantic import BaseModel, ConfigDict, RootModel, ValidationError as PydanticValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError as PydanticValidationError, field_validator, model_validator
 
 PYTHON_ROOT = Path(__file__).resolve().parents[1]
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
+
+from utils import MAX_DECIMAL_PLACES
 
 
 @dataclass(frozen=True)
@@ -854,6 +856,17 @@ class QuantitativeVariable(BaseModel):
     measurement_level: Literal["Interval", "Ratio"]
     classification: Literal["Discrete", "Continuous"]
     skew: Literal["Left", "Right", "None"]
+    decimal_places: int | None = Field(default=None, strict=True, ge=0, le=MAX_DECIMAL_PLACES)
+
+    @model_validator(mode="after")
+    def _validate_decimal_places(self):
+        has_decimal_places = "decimal_places" in self.model_fields_set
+        if self.classification == "Continuous":
+            if not has_decimal_places or self.decimal_places is None:
+                raise ValueError("decimal_places is required for Continuous quantitative variables")
+        elif has_decimal_places:
+            raise ValueError("decimal_places is only allowed for Continuous quantitative variables")
+        return self
 
 
 def _format_field_errors(variable_name: str, errors: list[dict[str, Any]]) -> list[ValidationError]:
@@ -877,6 +890,8 @@ def _format_field_errors(variable_name: str, errors: list[dict[str, Any]]) -> li
                 message = f"Expected {expected} at {path}"
         elif error_type == "finite_number":
             message = f"{path} must be finite"
+        elif error_type == "value_error":
+            message = message.removeprefix("Value error, ")
         formatted.append(
             ValidationError(
                 code=error_type,
@@ -908,6 +923,8 @@ def _format_model_errors(errors: list[dict[str, Any]]) -> list[ValidationError]:
                 message = f"Expected {expected} at {path}"
         elif error_type == "finite_number":
             message = f"{path} must be finite"
+        elif error_type == "value_error":
+            message = message.removeprefix("Value error, ")
         formatted.append(
             ValidationError(
                 code=error_type,
