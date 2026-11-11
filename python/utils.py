@@ -19,6 +19,9 @@ from distributions import (
 )
 
 
+MAX_DECIMAL_PLACES = 6
+
+
 def load_json(path: Path):
     if not path.exists():
         return None

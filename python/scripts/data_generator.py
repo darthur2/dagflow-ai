@@ -25,6 +25,7 @@ from regressors import (
     PoissonRegressor,
 )
 from utils import (
+    MAX_DECIMAL_PLACES,
     collect_formula_predictors,
     get_beta_0,
     get_distribution_categories,
@@ -211,6 +212,45 @@ def _regressor_for_distribution_name(distribution_name: str):
     return mapping[distribution_name]
 
 
+def _continuous_decimal_places(variables_data: dict[str, dict]) -> dict[str, int]:
+    decimal_places: dict[str, int] = {}
+
+    for variable_name, variable in variables_data.items():
+        if not isinstance(variable, dict):
+            continue
+        if variable.get("data_type") != "Quantitative":
+            continue
+        if variable.get("classification") != "Continuous":
+            continue
+
+        if "decimal_places" not in variable or variable["decimal_places"] is None:
+            raise ValueError(
+                f"Continuous quantitative variable '{variable_name}' is missing required field 'decimal_places'"
+            )
+
+        value = variable["decimal_places"]
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= MAX_DECIMAL_PLACES:
+            raise ValueError(
+                f"Continuous quantitative variable '{variable_name}' has invalid decimal_places={value!r}; "
+                f"expected an integer between 0 and {MAX_DECIMAL_PLACES}"
+            )
+
+        decimal_places[variable_name] = value
+
+    return decimal_places
+
+
+def _round_continuous(variable_name: str, values: np.ndarray, decimal_places: dict[str, int]) -> np.ndarray:
+    if variable_name not in decimal_places:
+        return values
+
+    array = np.asarray(values)
+    if array.dtype.kind not in {"f", "i", "u"}:
+        return values
+
+    return np.round(array, decimal_places[variable_name])
+
+
 def _distribution_name(distribution) -> str:
     name = distribution.__class__.__name__
     if name in {"CategoricalNominal", "CategoricalOrdinal"}:
@@ -231,6 +271,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
     formulas_data = load_json(SYNTHDATA / "formulas.json") or {}
 
     distributions = {name: make_distribution(distributions_data, name) for name in distributions_data}
+    decimal_places_by_variable = _continuous_decimal_places(variables_data)
     dag_order = get_dag_order(dag_data)
     node_types = {
         node_name: node_data.get("type", "Stochastic") if isinstance(node_data, dict) else "Stochastic"
@@ -272,6 +313,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
 
         if not parent_names:
             sampled = _sample_exogenous(variable_name, distribution, n)
+            sampled = _round_continuous(variable_name, sampled, decimal_places_by_variable)
             samples[variable_name] = sampled
             dataframe[variable_name] = sampled
             continue
@@ -465,6 +507,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                 stage="sampling",
                 error=exc,
             )
+        sampled = _round_continuous(variable_name, sampled, decimal_places_by_variable)
         samples[variable_name] = np.asarray(sampled)
         dataframe[variable_name] = sampled
 

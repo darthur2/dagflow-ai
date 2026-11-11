@@ -32,6 +32,7 @@ def test_generate_data_evaluates_deterministic_quantitative_formula(tmp_path, mo
                 "justification": "x",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "None",
             },
             "y": {
@@ -40,6 +41,7 @@ def test_generate_data_evaluates_deterministic_quantitative_formula(tmp_path, mo
                 "justification": "y",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "None",
             },
         },
@@ -82,6 +84,7 @@ def test_generate_data_uses_deterministic_categorical_parent_in_design_matrix(tm
                 "justification": "base",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "None",
             },
             "tier": {
@@ -96,6 +99,7 @@ def test_generate_data_uses_deterministic_categorical_parent_in_design_matrix(tm
                 "justification": "score",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "None",
             },
         },
@@ -163,6 +167,7 @@ def test_generate_data_evaluates_bmi_log_response_transformation(tmp_path, monke
                 "justification": "height",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "None",
             },
             "weight": {
@@ -171,6 +176,7 @@ def test_generate_data_evaluates_bmi_log_response_transformation(tmp_path, monke
                 "justification": "weight",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "Right",
             },
             "bmi": {
@@ -179,6 +185,7 @@ def test_generate_data_evaluates_bmi_log_response_transformation(tmp_path, monke
                 "justification": "bmi",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "Right",
             },
         },
@@ -241,6 +248,7 @@ def test_generate_data_rejects_stochastic_response_transformation(tmp_path, monk
                 "justification": "parent",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "None",
             },
             "child": {
@@ -249,6 +257,7 @@ def test_generate_data_rejects_stochastic_response_transformation(tmp_path, monk
                 "justification": "child",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "None",
             },
         },
@@ -300,6 +309,7 @@ def test_generate_data_applies_log1p_response_transformation(tmp_path, monkeypat
                 "justification": "x",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "None",
             },
             "y": {
@@ -308,6 +318,7 @@ def test_generate_data_applies_log1p_response_transformation(tmp_path, monkeypat
                 "justification": "y",
                 "measurement_level": "Ratio",
                 "classification": "Continuous",
+                "decimal_places": 6,
                 "skew": "None",
             },
         },
