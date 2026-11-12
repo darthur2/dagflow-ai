@@ -28,7 +28,7 @@ To use a different model, update both the top-level `model` and the `synthesizer
 6. Wait for the services to start: `opencode` listens on port `4096` and the Streamlit app on port `8501`.
 7. Open the Streamlit app from the `8501` port entry. The startup script makes both ports public, but if they remain private, set them to public in the **Ports** view. If your browser blocks the page, allow popups for the Codespaces domain and open the app from the Ports view.
 8. In the embedded chat, click **New project**, enter `/workspaces/dagflow-ai`, and start a new session.
-9. Describe the dataset you want. The agents create `synthdata/variables.json`, `synthdata/dag.json`, and the distribution and formula files, then run validation and generate `synthdata/generated_data.csv`.
+9. Describe the dataset you want. The agents create `synthdata/variables.json`, `synthdata/dag.json`, and the distribution and formula files, run validation, and tune with the default 1,000 observations. Before the final generation, the chat asks how many observations you want and writes `synthdata/generated_data.csv`.
 
 > **Note:** The startup scripts make ports `4096` and `8501` public so the browser can load the chat and the app. Stop the codespace when you are finished to avoid leaving it publicly reachable.
 
@@ -47,9 +47,10 @@ The agents create these files through the embedded chat. You can also run the va
 ```bash
 python python/scripts/validators.py
 python python/scripts/data_generator.py
+python python/scripts/data_generator.py --n 5000
 ```
 
-Validation checks the JSON inputs for consistency. Data generation reads the same inputs and writes `synthdata/generated_data.csv`.
+Validation checks the JSON inputs for consistency. Data generation reads the same inputs and writes `synthdata/generated_data.csv`. By default it writes 1,000 observations. Pass `--n` (or `--observations`) to choose the final row count. Calibration always uses 1,000 observations, so tuning runs stay comparable and the requested count only changes how many rows are written.
 
 ### What you will see
 

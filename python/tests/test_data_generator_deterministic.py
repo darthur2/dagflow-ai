@@ -21,7 +21,8 @@ def _write_project(path: Path, *, variables, dag, distributions, formulas) -> No
         (path / name).write_text(json.dumps(payload), encoding="utf-8")
 
 
-def test_generate_data_evaluates_deterministic_quantitative_formula(tmp_path, monkeypatch):
+@pytest.mark.parametrize("n", [50, 1500])
+def test_generate_data_evaluates_deterministic_quantitative_formula(tmp_path, monkeypatch, n):
     monkeypatch.setattr(data_generator, "SYNTHDATA", tmp_path)
     _write_project(
         tmp_path,
@@ -68,8 +69,9 @@ def test_generate_data_evaluates_deterministic_quantitative_formula(tmp_path, mo
         },
     )
 
-    dataframe = data_generator.generate_data(50)
+    dataframe = data_generator.generate_data(n)
 
+    assert len(dataframe) == n
     assert np.allclose(dataframe["y"], 1.0 + 2.0 * dataframe["x"])
 
 
