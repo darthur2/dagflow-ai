@@ -20,12 +20,15 @@ You will ensure that the following steps are completed:
 
 If the user selects auto mode, these steps will be performed without pausing. If the user selects interactive mode, you will pause after each step to get feedback from the user.
 
+During calibration and tuning, always generate with the default of 1000 observations by running `python python/scripts/data_generator.py` without any flags. Only after the user confirms the dataset is ready for final generation should you ask how many observations they want (default 1000). Use that count only for the final dataset, and tell the user that calibration still uses 1000 observations.
+
 Whenever you are asked to do something by the user, you may ONLY do one of the following things:
 
 - Chat with the user to clarify requests and report results
 - Delegate to the `variables`, `dag`, `distributions`, `formulas`, or `analysis` agents when needed
 - Run the validation report by running `python python/scripts/validators.py` and then use agents to fix
-- Generate the dataset by running `python python/scripts/data_generator.py` and then use agents to fix any errors or make changes to improve realism
+- Generate or tune the dataset by running `python python/scripts/data_generator.py` (defaults to 1000 observations) and then use agents to fix any errors or make changes to improve realism
+- Generate the final dataset by running `python python/scripts/data_generator.py --n <observations>` after asking the user for the desired number of observations
 
 In either auto or interactive mode, you MUST pause after each step to run the `python/scripts/validators.py` script and then use the error report to make any fixes.
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import argparse
 import csv
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -40,6 +42,9 @@ from utils import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SYNTHDATA = REPO_ROOT / "synthdata"
+
+DEFAULT_OBSERVATIONS = 1000
+CALIBRATION_OBSERVATIONS = 1000
 
 
 def _one_hot(values: np.ndarray, categories: list[str]) -> np.ndarray:
@@ -158,8 +163,20 @@ def _sample_exogenous(variable_name: str, distribution, n: int) -> np.ndarray:
     return np.asarray(samples)
 
 
-def _safe_sample_regressor(regressor, n: int, fallback_distribution=None) -> np.ndarray:
+def _safe_sample_regressor(
+    regressor,
+    n: int,
+    *,
+    sampling_X: np.ndarray | None = None,
+    predictor_transformations: dict[str, str] | None = None,
+) -> np.ndarray:
     calibrated = regressor.calibrate()
+    if sampling_X is not None:
+        calibrated = replace(
+            calibrated,
+            X=sampling_X,
+            predictor_transformations=predictor_transformations,
+        )
     return np.asarray(calibrated.sample(n))
 
 
@@ -168,6 +185,7 @@ def _raise_generation_error(
     distribution_name: str,
     parent_names: list[str],
     X: np.ndarray,
+    calibration_n: int | None,
     predictor_names: list[str],
     predictor_transformations: dict[str, str],
     response_transformation: str,
@@ -179,7 +197,7 @@ def _raise_generation_error(
     message = (
         f"Failed to generate variable '{variable_name}' during {stage}. "
         f"distribution={distribution_name}; parents={parent_names}; "
-        f"X_shape={X.shape}; predictor_names={predictor_names}; "
+        f"X_shape={X.shape}; calibration_n={calibration_n}; predictor_names={predictor_names}; "
         f"predictor_transformations={predictor_transformations}; "
         f"response_transformation={response_transformation}; "
         f"beta_0_type={type(beta_0).__name__}; beta_0_shape={getattr(beta_0, 'shape', None)}; "
@@ -264,7 +282,22 @@ def _distribution_name(distribution) -> str:
     return name
 
 
-def generate_data(n: int = 1000) -> pd.DataFrame:
+def _validate_observation_count(value: int, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer; got {value!r}")
+    return value
+
+
+def generate_data(
+    n: int = DEFAULT_OBSERVATIONS,
+    *,
+    calibration_n: int | None = None,
+) -> pd.DataFrame:
+    n = _validate_observation_count(n, "n")
+    calibration_n = CALIBRATION_OBSERVATIONS if calibration_n is None else calibration_n
+    calibration_n = _validate_observation_count(calibration_n, "calibration_n")
+    sampling_n = max(n, calibration_n)
+
     dag_data = load_json(SYNTHDATA / "dag.json") or {}
     variables_data = load_json(SYNTHDATA / "variables.json") or {}
     distributions_data = load_json(SYNTHDATA / "distributions.json") or {}
@@ -279,7 +312,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
     }
 
     samples: dict[str, np.ndarray] = {}
-    dataframe = pd.DataFrame(index=range(n))
+    dataframe = pd.DataFrame(index=range(sampling_n))
     parents_by_child: dict[str, list[str]] = {}
     for edge_data in dag_data.get("edges", {}).values():
         parents_by_child.setdefault(edge_data["child"], []).append(edge_data["parent"])
@@ -312,7 +345,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
             )
 
         if not parent_names:
-            sampled = _sample_exogenous(variable_name, distribution, n)
+            sampled = _sample_exogenous(variable_name, distribution, sampling_n)
             sampled = _round_continuous(variable_name, sampled, decimal_places_by_variable)
             samples[variable_name] = sampled
             dataframe[variable_name] = sampled
@@ -345,6 +378,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
             formulas_data,
             collect_formula_predictors(formulas_data, variable_name),
         )
+        X_calibration = X[:calibration_n]
         regressor_cls = _regressor_for_distribution_name(distribution_name)
 
         beta_0 = get_beta_0(formulas_data, variable_name)
@@ -358,7 +392,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                     standard_deviation=distribution.standard_deviation,
                     min=distribution.min,
                     max=distribution.max,
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -370,7 +404,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                     min=distribution.min,
                     max=distribution.max,
                     truncated=distribution.truncated,
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -383,7 +417,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                     min=distribution.min,
                     max=distribution.max,
                     truncated=distribution.truncated,
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -394,7 +428,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                     shape_2=distribution.shape_2,
                     min=distribution.min,
                     max=distribution.max,
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -402,7 +436,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
             elif distribution_name == "Bernoulli":
                 regressor = regressor_cls(
                     success_prob=distribution.success_prob,
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -414,7 +448,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                     min=distribution.min,
                     max=distribution.max,
                     truncated=distribution.truncated,
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -425,7 +459,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                     min=distribution.min,
                     max=distribution.max,
                     truncated=distribution.truncated,
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -437,7 +471,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                     min=distribution.min,
                     max=distribution.max,
                     truncated=distribution.truncated,
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -445,7 +479,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
             elif distribution_name == "Categorical Nominal":
                 regressor = regressor_cls(
                     target_probabilities=np.asarray(distribution.probabilities, dtype=float),
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -454,7 +488,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
             elif distribution_name == "Categorical Ordinal":
                 regressor = regressor_cls(
                     target_probabilities=np.asarray(distribution.probabilities, dtype=float),
-                    X=X,
+                    X=X_calibration,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
                     predictor_transformations=predictor_transformations,
@@ -465,7 +499,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                 if response_type not in {"quantitative", "categorical_nominal", "categorical_ordinal"}:
                     raise ValueError(f"Unsupported deterministic formula type for variable '{variable_name}': {response_type}")
                 regressor = regressor_cls(
-                    X=X,
+                    X=X_calibration,
                     beta_0=beta_0,
                     beta_1=beta_1,
                     predictor_names=predictor_names,
@@ -482,6 +516,7 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
                 distribution_name=distribution_name,
                 parent_names=parent_names,
                 X=X,
+                calibration_n=calibration_n,
                 predictor_names=predictor_names,
                 predictor_transformations=predictor_transformations,
                 response_transformation=response_transformation,
@@ -492,13 +527,19 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
             )
 
         try:
-            sampled = _safe_sample_regressor(regressor, n)
+            sampled = _safe_sample_regressor(
+                regressor,
+                sampling_n,
+                sampling_X=X,
+                predictor_transformations=predictor_transformations,
+            )
         except Exception as exc:
             _raise_generation_error(
                 variable_name=variable_name,
                 distribution_name=distribution_name,
                 parent_names=parent_names,
                 X=X,
+                calibration_n=calibration_n,
                 predictor_names=predictor_names,
                 predictor_transformations=predictor_transformations,
                 response_transformation=response_transformation,
@@ -513,14 +554,42 @@ def generate_data(n: int = 1000) -> pd.DataFrame:
 
     ordered_columns = [name for name in dag_order if name in dataframe.columns]
     dataframe = dataframe[ordered_columns]
+    dataframe = dataframe.iloc[:n].reset_index(drop=True)
     return dataframe
 
 
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Generate synthetic data from synthdata JSON inputs")
+    parser.add_argument(
+        "--n",
+        "--observations",
+        dest="n",
+        type=_positive_int,
+        default=DEFAULT_OBSERVATIONS,
+        help=(
+            f"number of observations to write (default: {DEFAULT_OBSERVATIONS}); "
+            f"calibration always uses {CALIBRATION_OBSERVATIONS} observations"
+        ),
+    )
+    return parser
+
+
 def main() -> None:
-    dataframe = generate_data()
+    args = _build_arg_parser().parse_args()
+    dataframe = generate_data(args.n)
     output_path = SYNTHDATA / "generated_data.csv"
     dataframe.to_csv(output_path, index=False, quoting=csv.QUOTE_MINIMAL)
-    print(f"Wrote {output_path}")
+    print(f"Wrote {len(dataframe)} observations to {output_path}")
 
 
 if __name__ == "__main__":

@@ -149,3 +149,99 @@ def test_continuous_variable_without_decimal_places_raises(tmp_path, monkeypatch
 
     with pytest.raises(ValueError, match="decimal_places"):
         data_generator.generate_data(20)
+
+
+def _write_single_normal_project(path: Path) -> None:
+    _write_project(
+        path,
+        variables={"x": _continuous_variable(6)},
+        dag={"nodes": {"x": {"type": "Stochastic"}}, "edges": {}},
+        distributions={
+            "x": {
+                "distribution": "Normal",
+                "mean": 0.0,
+                "standard_deviation": 1.0,
+                "min": -5.0,
+                "max": 5.0,
+            }
+        },
+        formulas={},
+    )
+
+
+def test_generate_data_returns_requested_observation_count(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_generator, "SYNTHDATA", tmp_path)
+    _write_single_normal_project(tmp_path)
+
+    assert len(data_generator.generate_data(25)) == 25
+    assert len(data_generator.generate_data(1500)) == 1500
+
+
+def test_generate_data_always_calibrates_on_fixed_sample_size(tmp_path, monkeypatch):
+    monkeypatch.setattr(data_generator, "SYNTHDATA", tmp_path)
+    _write_project(
+        tmp_path,
+        variables={"x": _continuous_variable(6), "y": _continuous_variable(6)},
+        dag={
+            "nodes": {"x": {"type": "Stochastic"}, "y": {"type": "Stochastic"}},
+            "edges": {"e1": {"parent": "x", "child": "y"}},
+        },
+        distributions={
+            "x": {
+                "distribution": "Normal",
+                "mean": 0.0,
+                "standard_deviation": 1.0,
+                "min": -5.0,
+                "max": 5.0,
+            },
+            "y": {
+                "distribution": "Normal",
+                "mean": 0.0,
+                "standard_deviation": 1.0,
+                "min": -5.0,
+                "max": 5.0,
+            },
+        },
+        formulas={
+            "y": {
+                "type": "quantitative",
+                "intercept": 0.0,
+                "predictors": {"x": {"coefficient": 0.0, "transformation": "none"}},
+            }
+        },
+    )
+
+    calibration_sizes = []
+    original_calibrate = data_generator.NormalRegressor.calibrate
+
+    def recording_calibrate(self):
+        calibration_sizes.append(self.X.shape[0])
+        return original_calibrate(self)
+
+    monkeypatch.setattr(data_generator.NormalRegressor, "calibrate", recording_calibrate)
+
+    assert len(data_generator.generate_data(25)) == 25
+    assert calibration_sizes == [data_generator.CALIBRATION_OBSERVATIONS]
+
+    calibration_sizes.clear()
+    assert len(data_generator.generate_data(1500)) == 1500
+    assert calibration_sizes == [data_generator.CALIBRATION_OBSERVATIONS]
+
+
+@pytest.mark.parametrize("value", [0, -1, 1.5, True])
+def test_generate_data_rejects_invalid_observation_count(value):
+    with pytest.raises(ValueError, match="positive integer"):
+        data_generator.generate_data(value)
+
+
+def test_arg_parser_defaults_to_1000_observations():
+    args = data_generator._build_arg_parser().parse_args([])
+
+    assert args.n == data_generator.DEFAULT_OBSERVATIONS == 1000
+
+
+@pytest.mark.parametrize("flag", ["--n", "--observations"])
+def test_arg_parser_accepts_observation_count(flag):
+    args = data_generator._build_arg_parser().parse_args([flag, "2500"])
+
+    assert args.n == 2500
